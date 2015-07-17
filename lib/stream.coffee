@@ -1,20 +1,26 @@
-StreamConnection = require 'livefyre-stream-client'
+StreamBackend = require 'livefyre-stream-client'
 {EventEmitter} = require 'events'
+assert = require 'assert'
 
 
-class StreamClient extends EventEmitter
+class StreamConnection extends EventEmitter
   constructor: (@environment='production') ->
     @stream = null
     @token = null
     @cursors = []
-    @_connected = false
+
+    # because we don't want everything to fail on an error
+    # if nobody is listening.
+    @on 'error', ->
 
   auth: (@token) ->
 
-  openCursor: (urn) ->
-    c = new StreamCursor(this, urn, @_subscribe urn)
-    @_event 'newCursor', c
+  openCursor: (opts) ->
+    {urn} = opts
+    assert(urn?, "Invalid/missing urn in opts")
+    c = new StreamCursor(this, opts, @_subscribe urn)
     @cursors.push(c)
+    @emit 'newCursor', c
     return c
 
   closeCursor: (c) ->
@@ -23,21 +29,20 @@ class StreamClient extends EventEmitter
       subscription = c.subscription
       subscription.close()
     catch e
-      @_event('error', "Failed closing subscription for #{@urn}. Error: #{e}", e)
+      @emit('error', "Failed closing subscription for #{c.urn}. Error: #{e}", e)
 
   _subscribe: (urn) ->
-    @connect()
-    subscription = stream.subscribe(urn)
+    subscription = @connect().subscribe(urn)
     return subscription
 
   connect: ->
-    if @_connected
-      return
-    @_connected = true
-    @stream = new StreamConnection(environment: @environment)
+    if @stream?
+      return @stream
+    @stream = new StreamBackend(environment: @environment)
     if @token?
       stream.auth @token
-      @_event 'authenticated'
+      @emit 'authenticated'
+    return @stream
 
   disconnect: () ->
     for c in @cursors
@@ -47,65 +52,22 @@ class StreamClient extends EventEmitter
     try
       @stream.disconnect()
     catch e
-    @_event 'disconnect'
+
+    @stream = null
+    @emit 'disconnect'
 
   close: ->
     @disconnect()
 
-  _event: (args...) ->
-    @emit.apply(this, args)
+  _emit: EventEmitter::emit
+
+  emit: (args...) ->
+    @_emit.apply(this, args)
     args.unshift('*')
-    @emit.apply(this, args)
+    @_emit.apply(this, args)
 
 
-class StreamCursor extends EventEmitter
-  constructor: (@client, @urn, @subscription) ->
-    @buffer = []
-    @_callback = null
-
-    @on 'data', (data) =>
-      if @_callback?
-        @_callback(null, data)
-        # clear the callback so that we start buffering again until asked for moar data.
-        @_callback = null
-      if @buffer?
-        @buffer = @buffer.concat(data)
-        return
-
-  open: ->
-    @subscription.on 'data', (data) =>
-      if typeof data is 'string'
-        data = JSON.parse(data)
-      @client._event 'data', @urn, data
-      @emit 'data', data
-
-  onData: (callback) ->
-    @on 'data', callback
-
-  hasNext: () ->
-    return @bufferedCount() > 0
-
-  bufferedCount: () ->
-    return if @buffer? then @buffer.length else 0
-
-  next: (callback) ->
-# The following would be how to do it if we were subject to race conditions, but
-# browsers and nodejs proportedly don't have them.
-# b = @buffer
-# @buffer = []
-
-    b = @buffer.splice(0, @buffer.length)
-    if b.length
-      callback null, b
-    @_callback = callback
-
-  close: ->
-    @client.closeCursor(this)
-
-  disableBuffer: () ->
-    @buffer = null
 
 
 module.exports =
-  StreamClient: StreamClient
-  StreamCursor: StreamCursor
+  StreamConnection: StreamConnection

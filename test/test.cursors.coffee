@@ -1,12 +1,13 @@
 assert = require 'assert'
 fs = require 'fs'
-{ChronosCursor} = require '../lib/cursors.coffee'
-{ChronosClient} = require '../lib/chronos.coffee'
+{ChronosCursor, UnreadCursor, RecentCursor} = require '../lib/cursors.coffee'
+{ChronosConnection} = require '../lib/chronos.coffee'
 sinon = require 'sinon'
+
 
 describe 'ChronosCursor init', sinon.test ->
   it "requires the client to have a fetch method", ->
-    assert.equal(typeof (new ChronosClient(null, {urn: 1}).fetch), "function")
+    assert.equal(typeof (new ChronosConnection(null, {urn: 1}).fetch), "function")
 
   it 'should not work without a urn', ->
     opts = {}
@@ -72,3 +73,19 @@ describe "ChronosCursor response handling", ->
     assert.equal(spy.getCall(0).args[1].data, args[2].data)
     assert.equal(spy.getCall(0).args[1].cursor, args[2].meta.cursor)
     assert.equal(c.cursor, args[2].meta.cursor)
+
+
+describe "Chronos Cursor Factories", ->
+  conn = new ChronosConnection()
+  describe "UnreadCursor", ->
+    it "should create a new cursor", ->
+      c = UnreadCursor(conn, "foo", 1)
+      assert.ok(c?)
+      assert.equal(c.urn, "foo")
+
+  describe "RecentCursor", ->
+    it "should create a new cursor", ->
+      c = RecentCursor(conn, "foo", 1)
+      assert.ok(c?)
+      assert.equal(c.urn, "foo")
+

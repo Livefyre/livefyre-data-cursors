@@ -3,7 +3,7 @@ request = require 'superagent'
 {EventEmitter} = require 'events'
 
 
-class ChronosClient extends EventEmitter
+class ChronosConnection extends EventEmitter
   ENVIRONMENTS:
     'fyre': 'bootstrap.fyre'
     'qa': 'bootstrap.qa-ext.livefyre.com'
@@ -24,8 +24,8 @@ class ChronosClient extends EventEmitter
     args.unshift('*')
     @_emit.apply(this, args)
 
-  openCursor: (urn, opts={}) ->
-    return new ChronosCursor(this, urn, opts)
+  openCursor: (opts={}) ->
+    return new ChronosCursor(this, opts)
 
   fetch: (opts, callback) =>
     req = request.get(@baseUrl)
@@ -45,4 +45,4 @@ class ChronosClient extends EventEmitter
 
 
 module.exports =
-  ChronosClient: ChronosClient
+  ChronosConnection: ChronosConnection
