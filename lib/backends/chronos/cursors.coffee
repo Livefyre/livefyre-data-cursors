@@ -58,8 +58,8 @@ class StreamCursor extends EventEmitter
   EVENT_DATA: 'data'
 
   constructor: (@connection, opts, @subscription) ->
-    {@buffer, @filter} = @opts
-    @buffer ?= []
+    {@buffer, @filter} = opts
+    @buffer ?= [] # oldest to youngest
     if @buffer is true
       @buffer = []
     @filter ?= (arg) -> return arg
@@ -92,7 +92,7 @@ class StreamCursor extends EventEmitter
       @_awaiter(data, raw)
       return
     if @buffer?
-      @buffer.unshift(data...)
+      @buffer.push(data...)
       @emit @EVENT_READY, data
     else
       @emit @EVENT_DATA, data
@@ -103,13 +103,19 @@ class StreamCursor extends EventEmitter
   bufferedCount: () ->
     return if @buffer? then @buffer.length else 0
 
-  next: (callback=null) ->
-    b = @buffer.splice(0, @buffer.length)
+  next: (opts=null, callback=null) ->
+    if typeof opts is 'function'
+      [callback, opts] = [opts, {}]
+    opts ?= {}
+    {max} = opts
+    max ?= Infinity
+
+    b = @buffer.splice(0, max)
 
     if not callback?
       return b
     if b.length
-      callback b
+      return callback b
     @_awaiter = callback
 
   close: ->
@@ -146,7 +152,7 @@ exports.UnreadCursor = UnreadCursor = (chronosConnection, urn, lastReadNext, lim
   return chronosConnection.openCursor(opts)
 
 
-exports.ReadCursor = (chronosConnection, urn, lastReadPrev, limit=20) ->
+exports.ReadCursor = ReadCursor = (chronosConnection, urn, lastReadPrev, limit=20) ->
   opts =
     urn: urn
     query:

@@ -1,5 +1,5 @@
 request = require 'superagent'
-{ChronosCursor} = require './cursors.coffee'
+{ChronosCursor} = require './../../cursors/chronos.coffee'
 {EventEmitter} = require 'events'
 
 
