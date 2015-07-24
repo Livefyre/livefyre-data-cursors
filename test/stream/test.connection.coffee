@@ -11,7 +11,7 @@ describe.skip 'StreamClient should work against production', ->
   urn = "urn:livefyre:cnn.fyre.co:site=353270:topic=54a2fe0def40ce028cedb0b4:topicStream"
 
   it "should work on #{urn}", ->
-    {StreamClient} = require '../lib/stream.coffee'
+    {StreamClient} = require '../../lib/backends/stream/connection.coffee'
     client = new StreamClient('production')
     client.on '*', log
     subscription = client.subscribe(urn)

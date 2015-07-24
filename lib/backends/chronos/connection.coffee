@@ -1,19 +1,63 @@
 request = require 'superagent'
-{ChronosCursor} = require './../../cursors/chronos.coffee'
+{ChronosCursor} = require './cursors.coffee'
 {EventEmitter} = require 'events'
+{Precondition} = require '../../errors.coffee'
 
 
 class ChronosConnection extends EventEmitter
   ENVIRONMENTS:
-    'fyre': 'bootstrap.fyre'
-    'qa': 'bootstrap.qa-ext.livefyre.com'
-    'uat': 'bootstrap.t402.livefyre.com'
-    'production': 'bootstrap.livefyre.com'
+    'fyre': 'https://bootstrap.fyre'
+    'qa': 'https://bootstrap.qa-ext.livefyre.com'
+    'uat': 'https://bootstrap.t402.livefyre.com'
+    'production': 'https://bootstrap.livefyre.com'
 
-  constructor: (environment='production') ->
-    @baseUrl = "https://#{@ENVIRONMENTS[environment]}/api/v4/timeline/"
+  constructor: (@environment='production') ->
+    Precondition.checkArgument(@ENVIRONMENTS[@environment]?,
+      "#{@environment} is not a valid value")
+    @baseUrl = "#{@ENVIRONMENTS[@environment]}/api/v4/timeline/"
     @token = null
+    # don't term on errors:
     @on 'error', ->
+
+  auth: (@token) ->
+    if @token?
+      Precondition.equal(typeof @token, 'string', "token is not a string.")
+
+  _emit: EventEmitter::emit
+
+  emit: (args...) ->
+    @_emit.apply(this, args)
+    args.unshift('*')
+    @_emit.apply(this, args)
+
+  openCursor: (query, opts={}) ->
+    Precondition.checkArgumentType(query, 'object', "invalid query object: #{query}")
+    return new ChronosCursor(this, query, opts)
+
+  fetch: (opts, callback) =>
+    Precondition.equal(typeof opts, 'object')
+    Precondition.equal(typeof callback, 'function')
+    req = request.get(@baseUrl)
+      .set('Accept', 'application/json')
+      .query(opts)
+
+    if @token?
+      req = req.set('Authorization', "lftoken #{@token}")
+
+    req.end (err, res) =>
+      if err?
+        @emit 'error', "Error fetching #{opts.resource}. Error: #{err}", err
+        return callback {err: err, response: res, data: undefined}
+      return callback {
+        err: err
+        response: res
+        data: res.body
+      }
+
+  close: () ->
+
+class MockChronosConnection extends EventEmitter
+  constructor: (data...) ->
 
   auth: (@token) ->
 
@@ -24,22 +68,22 @@ class ChronosConnection extends EventEmitter
     args.unshift('*')
     @_emit.apply(this, args)
 
-  openCursor: (opts={}) ->
-    return new ChronosCursor(this, opts)
+  openCursor: (query, opts={}) ->
+    Precondition.checkArgumentType(query, 'object', "invalid query object: #{query}")
+    return new ChronosCursor(this, query, opts)
 
   fetch: (opts, callback) =>
-    req = request.get(@baseUrl)
-      .set('Accept', 'application/json')
-      .query(opts)
-
-    if @token?
-      req = req.set('Authorization', "lftoken #{@token}")
+    Precondition.equal(typeof opts, 'object')
+    Precondition.equal(typeof callback, 'function')
 
     req.end (err, res) =>
       if err?
         @emit 'error', "Error fetching #{opts.resource}. Error: #{err}"
         return callback err, res
-      return callback err, res, res.body
+      return callback err, {
+        response: res
+        data: data
+      }
 
   close: () ->
 

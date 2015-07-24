@@ -1,97 +1,112 @@
-{LiveStream, UnreadCursor} = require '../connection.coffee'
 {EventEmitter} = require 'events'
+{Precondition, Condition} = require '../../errors.coffee'
+
+ReadMode =
+  natural: 0
+  head: 1
+  tail: -1
 
 
-class BeaconDatasource extends EventEmtter
-  constructor: (chronosConnection, streamConnection, @urn, opts={}) ->
-    {@limit, @lastRead} = opts
-    @limit ?= 20
-    @lastRead = null
-    @stream = LiveStream(streamConnection, @urn)
-    @cursor = null
-    @_buffer = []
-    @_initialized = false
+class BidirectionalStream extends EventEmtter
+  constructor: (@pastCursor, @futureCursor, opts={}) ->
+    {autoLoad, @size} = opts
+    autoLoad ?= false
+    @_initialized = true
+    Precondition.checkArgument(@futureCursor?, true, "future cursor cannot be null")
+    Precondition.checkArgument(@pastCursor?, true, "past cursor cannot be null")
+    Precondition.checkArgument(@futureCursor.on?, true, "future cursor must be an eventemitter")
+    Precondition.checkArgument(@pastCursor.on?, true, "past cursor must be an eventemitter")
+    Precondition.checkArgumentType(autoLoad, 'boolean', "autoLoad option must be boolean; default true")
 
-    # only emit updates when we've loaded from chronos
-    @stream.on 'ready', (data) =>
+    @pastCursor.on 'error', (args...) =>
+    @futureCursor.on 'error', (args...) =>
+
+    @pastCursor.on 'readable', (event) =>
+      if not @_initialized
+        @_initialized = true
+        @emit 'initialized'
+      @_updated(event.data)
+
+    @pastCursor.on 'end', (event) =>
+      @_updated []
+
+    @futureCursor.on 'readable', (event) =>
       if not @_initialized?
+        @emit 'trace', 'the future is now', event
         return
-      @_updated()
+      @_updated(event.data)
 
-    @cursor = RecentCursor(chronosConnection, @urn, limit=@limit)
-    @cursor.next (err, res) =>
+    # check if the
+    if @pastCursor.count() > 0
       @_initialized = true
-      @_loadUnread err, res
+      @emit 'initialized'
+    else if autoLoad
+      @pastCursor.next()
 
-  _loadUnread: (err, res) ->
-    if err?
-      @emit 'error', "Error loading from chronos: #{err}", err
-      return
-    data = res.data
-    if not Array.isArray(data)
-      @emit 'error', "Error loading from chronos: data is not array"
-      return
-    @_buffer.push(data...)
-    @_updated()
+  _updated: (data) ->
+    Precondition.checkArgumentType(data, 'array')
+    c = @count()
+    c.data = data
+    @emit 'readable', c
 
-  _updated: ->
-    @emit 'updated', @bufferedCount()
-
-  bufferedCount: ->
+  count: ->
+    live = if @futureCursor.isLive? then @futureCursor.isLive() else false
     # don't return a count until we've
     if not @_initialized?
-      return {count: NaN, estimated: true}
+      return {
+        count: NaN,
+        estimated: true
+        live: live
+      }
     return {
-      count: @bufferedCount()
-      estimated: @cursor.hasNext()
+      count: @pastCursor.count() + @futureCursor.count()
+      estimated: @pastCursor.hasNext()
+      live: live
     }
 
-  read: (opts) ->
-    {max, mode} = opts
-    max ?= @limit
-    seek ?= 0
-    assert([0, -1, 1].indexOf(seek) is not -1, "invalid value for seek: #{seek}")
+  read: (opts={}) ->
+    {size, mode, loadOnFault} = opts
+    size ?= @size
+    mode ?= 'natural'
+    loadOnFault ?= false
+    Precondition.checkArgument(ReadMode[mode]?, true, "invalid mode: #{mode}")
+    Precondition.checkArgument(typeof size, 'number', 'invalid size')
 
-    if seek is -1 # going back in time
-      return @_buffer.slice(0, max)
+    if mode is ReadMode.tail # going back in time
+      return @_readPast(size, loadOnFault)
 
-    if seek is 1 # going into the future, read from stream.
-      return @stream.next({max: max})
+    if mode is ReadMode.head # going into the future, read from stream.
+      return @futureCursor.read(size: size)
 
-    assert.equal(seek, 0)
-    # read from head and tail if necessary!
-    b = @stream.next({max: max})
-    if b.length >= max
+    if mode is ReadMode.natural
+      # read from head and then tail!
+      b = @futureCursor.read(size: size)
+      size =- b.length
+      if size > 0
+        b.push(@_readPast(size, loadOnFault)...)
       return b
-    b.push(@_buffer.slice(0, max - b.length)...)
-    return b
+    Precondition.illegalState("how did we get here? #{mode}")
 
   flush: ->
-    return @read({max: Infinity})
+    return @read({size: Infinity})
 
   close: ->
-    @stream.close()
-    @cursor.close()
+    @futureCursor.close()
+    @pastCursor.close()
 
   save: ->
 
   @restore: ->
 
-
-rslice = (array, count=null) ->
-  if not count?
-    return array.slice(0, array.length)
-
-  assert.equal(typeof count, 'number')
-  assert.ok(count >= 0)
-
-  if count is 0
-    return []
-
-  offset = Math.max(array.length - count)
-  return array.slice(offset, count)
+  _readPast: (size, fault) ->
+    b = @pastCursor.read(size: size, fault: fault)
+    if b is null
+      return []
+    if b is undefined
+      return []
+    return b
 
 
 module.exports =
-  GrowlDatasource: GrowlDatasource
-  BeaconDatasource: BeaconDatasource
+  BidirectionalStream: BidirectionalStream
+  ReadMode: ReadMode

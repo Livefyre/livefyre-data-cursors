@@ -1,139 +1,125 @@
-assert = require 'assert'
 {EventEmitter} = require 'events'
+{Precondition, DataError, Logger} = require '../../errors.coffee'
 
 module.exports = exports = {}
 
 
-class ChronosCursor
-  constructor: (@client, opts={}) ->
-    {@urn, @start, @order, @limit, @cursor} = opts
-    assert.ok @urn, "invalid instantiation without valid opts.urn value"
-    @start ?= null
-    @order ?= -1
-    @limit ?= 20
+class ChronosCursor extends EventEmitter
+  constructor: (@client, @query, opts={}) ->
+    {@cursor} = opts
     @cursor ?= null
+    @buffer = []
+    Precondition.checkArgumentType(@query, 'object', "invalid query value: #{@query}")
+    Precondition.checkArgumentType(@query.resource, 'string', "invalid query.resource value: #{@query.resource}")
+    Precondition.checkArgument(@query.resource.indexOf('urn:') == 0, true,
+      "invalid query.resource value; expected URN, got query: #{@query.resource.indexOf('urn:')}")
 
-  hasNext: () ->
-    if @order is -1
-      return if @cursor then @cursor.hasPrev else true
-    return if @cursor then @cursor.hasNext else true
+    @normalizeQuery @query
 
-  next: (callback) ->
-    assert(callback?)
-    if not @hasNext()
-      callback null, []
-      return
+    @on 'error', (args...) ->
+      #Logger.error("ChronosCursor", args...)
 
-    @client.fetch @_query(), (args...) ->
-      @_onResponse(args..., callback)
+  hasNext: ->
+    if not @cursor?
+      return undefined
+    return @cursor.hasNext
 
-  _onResponse: (err, res, data, callback) ->
-    assert(callback?)
-    if err?
-      return callback err
+  count: ->
+    return @buffer.length
 
-    if not data.meta? or not data.meta.cursor?
-      return callback new DataError("invalid .meta field", data)
+  read: (opts={}) ->
+    {size, fault} = opts
+    size ?= Infinity
+    fault ?= false
+    Precondition.checkArgumentType(size, 'number')
+    Precondition.checkArgumentType(fault, 'boolean')
 
-    @cursor = data.meta.cursor
-    callback err, {data: data.data, cursor: data.meta.cursor}
-
-  _query: () ->
-    opts =
-      resource: @urn
-      limit: @limit
-    # TODO: figure this out...
-    if @order is -1
-      # backward
-      opts.until = if @cursor then @cursor.prev else @start
-    else if @order is 1
-      opts.since = if @cursor then @cursor.next else @start
-    else
-      throw new Error("Invalid order value: #{@order}")
-    return opts
-
-
-class StreamCursor extends EventEmitter
-  EVENT_READY: 'ready'
-  EVENT_DATA: 'data'
-
-  constructor: (@connection, opts, @subscription) ->
-    {@buffer, @filter} = opts
-    @buffer ?= [] # oldest to youngest
-    if @buffer is true
-      @buffer = []
-    @filter ?= (arg) -> return arg
-    assert.equal(typeof @filter, 'function', 'filter is not a function')
-    assert.ok(@buffer is null or Array.isArray(@buffer), 'invalid value for buffer')
-
-    # propogate errors to the connection
-    @on 'error', (err) ->
-      @connection.emit 'error', {cursor: this, err: err}
-
-    # awaiter
-    @_awaiter = null
-    @subscription.on 'data', (data) =>
-      try
-        @_onData(this)
-      catch e
-        @on 'error', new DataError("#{e}", data)
-
-  _onData: (raw) ->
-    if typeof raw is 'string'
-      raw = JSON.parse(raw)
-    if not Array.isArray(raw)
-      raw = [raw]
-    data = @filter(raw)
-    if not data?
-      return
-    if data.length is 0
-      return
-    if @_awaiter?
-      @_awaiter(data, raw)
-      return
-    if @buffer?
-      @buffer.push(data...)
-      @emit @EVENT_READY, data
-    else
-      @emit @EVENT_DATA, data
-
-  hasNext: () ->
-    return @bufferedCount() > 0
-
-  bufferedCount: () ->
-    return if @buffer? then @buffer.length else 0
-
-  next: (opts=null, callback=null) ->
-    if typeof opts is 'function'
-      [callback, opts] = [opts, {}]
-    opts ?= {}
-    {max} = opts
-    max ?= Infinity
-
-    b = @buffer.splice(0, max)
-
-    if not callback?
-      return b
+    b = @buffer.splice(0, size)
     if b.length
-      return callback b
-    @_awaiter = callback
+      console.log("read buffered #{b.length}, remaining: #{@buffer.length}")
+      return b
 
-  close: ->
-    @connection.closeCursor(this)
+    # no more data to be had.
+    if @hasNext() is false
+      console.log("no more data")
+      return null
+
+    if fault
+      @fault()
+    return undefined
+
+  fault: ->
+    @emit 'pagefault'
+    @next()
+
+  isLive: ->
+    return false
+
+  next: ->
+    console.log("fetching", @query)
+    @client.fetch @query, @_processResponse.bind(this)
+
+  _processResponse: (result) ->
+    try
+      if result.err?
+        throw result.err
+      data = result.data
+      Precondition.checkArgument(data?, true, "fetched data has no .data!")
+      Precondition.checkArgument(data.meta?, true, "fetched data has no .meta!")
+      @cursor = data.meta.cursor
+      console.log(">", @cursor)
+      Precondition.checkArgumentType(@cursor, 'object')
+      Precondition.checkArgumentType(data.data, 'array')
+      @buffer.push(data.data...)
+      added = data.data
+    catch err
+      @emit 'error', err
+      return
+
+    if @query.gt or @query.gte
+      @query.gte = @cursor.next
+      delete @query.gt
+    if @query.lt or @query.lte
+      @query.lte = @cursor.next
+      delete @query.lt
+
+    @emit 'readable', {
+      buffered: @buffer.length
+      data: added
+      isDone: not @hasNext()
+      next: @cursor.next
+    }
+    @emit 'end' if not @hasNext()
+
+
+  normalizeQuery: ->
+    query = @query
+    if not query.limit?
+      query.limit = 10
+    if query.since?
+      query.order = 'asc'
+      query.gt = query.since
+      delete query.since
+    if query.until?
+      query.order = 'desc'
+      query.gt = query.until
+      delete query.until
+    if not query.order?
+      query.order = 'desc'
+    if not query.lt? and not query.lte?
+      query.lte = new Date().toISOString()
 
 
 exports.ChronosCursor = ChronosCursor
-exports.StreamCursor = StreamCursor
 
 
-exports.RecentCursor = RecentCursor = (chronosConnection, urn, limit=20) ->
-  opts =
-    urn: urn
-    query:
-      lte: new Date().toISOString()
-      order: 'desc'
-      limit: limit
-  return chronosConnection.openCursor(opts)
+exports.RecentCursor = RecentCursor = (chronosConnection, urn, limit=10, opts={}) ->
+  query =
+    resource: urn
+    lte: new Date().toISOString()
+    order: 'desc'
+    limit: limit
+  return chronosConnection.openCursor(query, opts)
 
 # Creates a cursor from latest unread to oldest unread:
 #  NOW
@@ -141,32 +127,22 @@ exports.RecentCursor = RecentCursor = (chronosConnection, urn, limit=20) ->
 #   | ----->
 #   |
 #   |
-exports.UnreadCursor = UnreadCursor = (chronosConnection, urn, lastReadNext, limit=20) ->
-  opts =
-    urn: urn
-    query:
-      gt: lastReadNext
-      lt: new Date().toISOString()
-      order: 'desc'
-      limit: limit
-  return chronosConnection.openCursor(opts)
+exports.UnreadCursor = UnreadCursor = (chronosConnection, urn, lastReadNext, limit=10, opts={}) ->
+  query =
+    resource: urn
+    gt: lastReadNext
+    lt: new Date().toISOString()
+    order: 'desc'
+    limit: limit
+  return chronosConnection.openCursor(query, opts)
 
 
-exports.ReadCursor = ReadCursor = (chronosConnection, urn, lastReadPrev, limit=20) ->
-  opts =
-    urn: urn
-    query:
-      gte: lastReadPrev
-      order: 'desc'
-      limit: limit
-  return chronosConnection.openCursor(opts)
+exports.ReadCursor = ReadCursor = (chronosConnection, urn, lastReadPrev, limit=10, opts={}) ->
+  query =
+    resource: urn
+    gte: lastReadPrev
+    order: 'desc'
+    limit: limit
+  return chronosConnection.openCursor(query, opts)
 
-
-exports.LiveStream = LiveStream = (streamConnection, opts) ->
-  return streamConnection.openCursor(opts)
-
-
-class DataError extends Error
-  constructor: (@message, @data) ->
-    @name = "DataError"
 

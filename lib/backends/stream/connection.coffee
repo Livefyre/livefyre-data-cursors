@@ -1,10 +1,14 @@
 StreamBackend = require 'livefyre-stream-client'
 {EventEmitter} = require 'events'
-assert = require 'assert'
+{Precondition} = require '../../errors.coffee'
 
 
 class StreamConnection extends EventEmitter
+  _ENVIRONMENTS: ['fyre', 'qa', 'uat', 'production']
   constructor: (@environment='production') ->
+    Precondition.checkArgument(@_ENVIRONMENTS.indexOf(@environment) is not -1,
+      true,
+      "unknown environment: #{@environment}")
     @stream = null
     @token = null
     @cursors = []
@@ -14,11 +18,18 @@ class StreamConnection extends EventEmitter
     @on 'error', ->
 
   auth: (@token) ->
+    Precondition.checkArgument(typeof @token, 'string',
+      "token is not a string: #{@token}")
 
-  openCursor: (opts) ->
+  isLive: ->
+    # TODO make this honest
+    return true
+
+  openCursor: (opts={}) ->
     {urn} = opts
-    assert(urn?, "Invalid/missing urn in opts")
-    c = new StreamCursor(this, opts, @_subscribe urn)
+    Precondition.checkArgument(typeof urn, 'string',
+      "opts.urn is not a string: #{urn}")
+    c = new StreamCursor(this, @_subscribe urn, opts)
     @cursors.push(c)
     @emit 'newCursor', c
     return c
@@ -29,7 +40,7 @@ class StreamConnection extends EventEmitter
       subscription = c.subscription
       subscription.close()
     catch e
-      @emit('error', "Failed closing subscription for #{c.urn}. Error: #{e}", e)
+      @emit 'error', "Failed closing subscription for #{c.urn}. Error: #{e}", e
 
   _subscribe: (urn) ->
     subscription = @connect().subscribe(urn)
@@ -65,8 +76,6 @@ class StreamConnection extends EventEmitter
     @_emit.apply(this, args)
     args.unshift('*')
     @_emit.apply(this, args)
-
-
 
 
 module.exports =
