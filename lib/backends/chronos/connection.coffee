@@ -2,10 +2,12 @@ request = require 'superagent'
 {ChronosCursor} = require './cursors.coffee'
 {EventEmitter} = require 'events'
 {Precondition} = require '../../errors.coffee'
+{BaseConnection} = require '../base/connection.coffee'
 
 
-class ChronosConnection extends EventEmitter
+class ChronosConnection extends BaseConnection
   ENVIRONMENTS:
+    'fy.re': 'https://bootstrap.fy.re'
     'fyre': 'https://bootstrap.fyre'
     'qa': 'https://bootstrap.qa-ext.livefyre.com'
     'uat': 'https://bootstrap.t402.livefyre.com'
@@ -19,20 +21,15 @@ class ChronosConnection extends EventEmitter
     # don't term on errors:
     @on 'error', ->
 
-  auth: (@token) ->
-    if @token?
-      Precondition.equal(typeof @token, 'string', "token is not a string.")
 
-  _emit: EventEmitter::emit
-
-  emit: (args...) ->
-    @_emit.apply(this, args)
-    args.unshift('*')
-    @_emit.apply(this, args)
-
-  openCursor: (query, opts={}) ->
+  openCursor: (query) ->
     Precondition.checkArgumentType(query, 'object', "invalid query object: #{query}")
+    opts = query.opts or {}
+    delete query.opts
     return new ChronosCursor(this, query, opts)
+
+  count: (query) ->
+    throw new Error("not implemented")
 
   fetch: (opts, callback) =>
     Precondition.equal(typeof opts, 'object')
@@ -55,6 +52,7 @@ class ChronosConnection extends EventEmitter
       }
 
   close: () ->
+
 
 class MockChronosConnection extends EventEmitter
   constructor: (data...) ->

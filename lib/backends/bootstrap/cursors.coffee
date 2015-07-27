@@ -1,9 +1,3 @@
-{EventEmitter} = require 'events'
-{Precondition, DataError, Logger} = require '../../errors.coffee'
-
-module.exports = exports = {}
-
-
 class ChronosCursor extends EventEmitter
   constructor: (@client, @query, opts={}) ->
     {@cursor} = opts
@@ -17,7 +11,7 @@ class ChronosCursor extends EventEmitter
     @normalizeQuery @query
 
     @on 'error', (args...) ->
-      #Logger.error("ChronosCursor", args...)
+#Logger.error("ChronosCursor", args...)
 
   hasNext: ->
     if not @cursor?
@@ -108,36 +102,3 @@ class ChronosCursor extends EventEmitter
       query.order = 'desc'
     if not query.lt? and not query.lte?
       query.lte = new Date().toISOString()
-
-
-exports.ChronosCursor = ChronosCursor
-
-
-exports.RecentQuery = (urn, limit=10, cursorOpts={}) ->
-  Precondition.checkArgumentType(urn, 'string', 'urn must be a string')
-  return resource: urn
-    lte: new Date().toISOString()
-    order: 'desc'
-    limit: limit
-    opts: cursorOpts
-
-exports.UnreadQuery = (urn, lastRead, limit=10, cursorOpts={}) ->
-  Precondition.checkArgumentType(urn, 'string', 'urn must be a string')
-  Precondition.checkArgumentType(lastRead, 'string', 'lastRead must be a string')
-  return resource: urn
-    lte: new Date().toISOString()
-    gt: lastRead
-    order: 'desc'
-    limit: limit
-    opts: cursorOpts
-
-exports.ReadQuery = (urn, lastRead, limit=10, cursorOpts={}) ->
-  Precondition.checkArgumentType(urn, 'string', 'urn must be a string')
-  Precondition.checkArgumentType(lastRead, 'string', 'lastRead must be a string')
-  return resource: urn
-    gte: lastRead
-    order: 'desc'
-    limit: limit
-    opts: cursorOpts
-
-

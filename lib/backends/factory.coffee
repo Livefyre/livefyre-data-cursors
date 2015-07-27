@@ -1,5 +1,6 @@
 {ChronosConnection} = require './chronos/connection.coffee'
-{StreamConnection} = require './stream/connection.coffee'
+# we can't import this until we fix the stream client issue.
+#{StreamConnection} = require './stream/connection.coffee'
 {Precondition} = require '../errors.coffee'
 
 
@@ -11,23 +12,25 @@ class ConnectionFactory
 
   chronos: ->
     c = new ChronosConnection(@env)
-    @_setup c
+    @_setup "Chronos", c
     return c
 
   personalStream: ->
     c = new StreamConnection(@env)
-    @_setup c
+    @_setup "Stream", c
     return c
 
   stream: ->
 
   livecount: ->
 
-  _setup: (c) ->
+  _setup: (name, c) ->
     if @token? and c.auth?
       c.auth @token
     if @onError? and c.on?
-      c.on 'error', @onError
+      onerr = @onError.bind(name, c)
+      c.on 'error', onerr
+
 
 
 module.exports = (env) ->

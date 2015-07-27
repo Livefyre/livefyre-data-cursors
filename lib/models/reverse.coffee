@@ -1,11 +1,6 @@
 {EventEmitter} = require 'events'
 {Precondition, Condition} = require '../errors.coffee'
 
-ReadMode =
-  natural: 0
-  head: 1
-  tail: -1
-
 
 class ReverseStream extends EventEmitter
   constructor: (@pastCursor, opts={}) ->

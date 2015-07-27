@@ -14,9 +14,11 @@ class DataError extends Error
     @name = "DataError"
     @message ?= "unexpected data"
 
+
 Logger =
   error: (name, args...) ->
     console.error("bad things in #{name}", args)
+
 
 Precondition =
   equal: (actual, expected, msg=null) ->
@@ -51,7 +53,7 @@ _decorate = (key, func) ->
       passed = true
     finally
       if not passed
-        console.log("Precondition `#{key}` failed:\n#{Precondition._getEntryPoint(key)}")
+        console.log("Precondition `#{key}` failed:\n#{Precondition._getEntryPoint(key)}\nCaller:#{arguments.callee.caller.toString()}")
 
 for key of Precondition
   if key is '_getEntryPoint'

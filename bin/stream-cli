@@ -10,7 +10,7 @@ Options:\n\
 ";
 
 require("coffee-script/register");
-var chronoss = require("../lib/backends/chronos/cursors.coffee");
+var chronosCursors = require("../lib/backends/chronos/cursors.coffee");
 var reverse = require("../lib/models/reverse.coffee");
 
 var docopt = require("docopt");
@@ -18,9 +18,13 @@ var docopt = require("docopt");
 var log = console.log.bind(console);
 var opts = docopt.docopt(doc, {version: 'alpha'});
 
-var ConnectionFactory = require("../lib/backends/factory.coffee")(opts['<env>']);
+var ConnectionFactory = require("../lib/backends/factory.coffee")(opts['<env>'],
+    {
+        token: opts['--token'],
+        onError: function (name, backend, event) { log("#{name} - ERROR", event); }
+    });
 
-// for QA
+// for QA's certificates
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 
 //
@@ -34,8 +38,9 @@ var Factory = {
 var Prog = {
     reverse: function () {
         var client = ConnectionFactory.chronos();
-        client.auth(opts['--token']);
-        var cursor = chronoss.RecentCursor(client, opts['<resource>'], opts['--size']);
+        client.auth();
+        var query = chronosCursors.RecentQuery(opts['<resource>'], opts['--size']);
+        var cursor = ConnectionFactory.chronos().openCursor(query);
         var stream = new reverse.ReverseStream(cursor, {autoLoad: true});
         stream.on('error', function (event) {
             log('error', event);
