@@ -1,7 +1,8 @@
-.PHONY: test browser
+.PHONY: test browser package
 
 MOCHA_OPTS = --recursive --compilers coffee:coffee-script/register --reporter spec
 SRC = $(wildcard lib/*)
+
 
 node_modules: package.json
 	npm install
@@ -13,13 +14,24 @@ run:
 test:
 	node node_modules/.bin/mocha test/ $(MOCHA_OPTS)
 
+server:
+	python -m SimpleHTTPServer 5000
+#	open public/test-dist.html
+
 debug_test:
 	./node_modules/mocha/bin/mocha debug test
+
+package: browser
+
+package_loop:
+	watch -n 2 $(MAKE) package
 
 dist:
 	mkdir -p dist
 
-dist/livefyre-timeline.js: dist $(SRC) Makefile
-	./node_modules/.bin/browserify . -s LivefyreTimeline > dist/livefyre-timeline.js
+dist/livefyre-timeline.js: $(SRC) package.json Makefile | dist
+	./node_modules/.bin/browserify . -s LivefyreTimeline > $@
 
 browser: dist/livefyre-timeline.js
+
+.DELETE_ON_ERROR:
