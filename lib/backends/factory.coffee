@@ -5,9 +5,9 @@
 
 
 class ConnectionFactory
-  constructor: (@cluster, opts={}) ->
-    Precondition.checkArgumentType(@cluster, 'string')
-    Precondition.checkArgument(@cluster.endsWith 'fyre.co', false, "cluster is not network name")
+  constructor: (@env, opts={}) ->
+    #Precondition.checkArgumentType(@cluster, 'string')
+    #Precondition.checkArgument(@cluster.endsWith 'fyre.co', false, "cluster is not network name")
     {@token, @onError, @network} = opts
 
   chronos: ->
@@ -33,5 +33,5 @@ class ConnectionFactory
 
 
 
-module.exports = (env) ->
-  return new ConnectionFactory(env)
+module.exports = (env, opts) ->
+  return new ConnectionFactory(env, opts)

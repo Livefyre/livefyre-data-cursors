@@ -1,7 +1,7 @@
 .PHONY: test browser package
 
 MOCHA_OPTS = --recursive --compilers coffee:coffee-script/register --reporter spec
-SRC = $(wildcard lib/*)
+SRC = $(shell find lib/ -type f)
 
 
 node_modules: package.json

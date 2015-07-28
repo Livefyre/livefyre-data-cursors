@@ -34,7 +34,7 @@ class ChronosConnection extends BaseConnection
   fetch: (opts, callback) =>
     Precondition.equal(typeof opts, 'object')
     Precondition.equal(typeof callback, 'function')
-    req = request.get(@baseUrl)
+    req = request.get(@build_url opts)
       .set('Accept', 'application/json')
       .query(opts)
 
@@ -51,40 +51,25 @@ class ChronosConnection extends BaseConnection
         data: res.body
       }
 
-  close: () ->
-
-
-class MockChronosConnection extends EventEmitter
-  constructor: (data...) ->
-
-  auth: (@token) ->
-
-  _emit: EventEmitter::emit
-
-  emit: (args...) ->
-    @_emit.apply(this, args)
-    args.unshift('*')
-    @_emit.apply(this, args)
-
-  openCursor: (query, opts={}) ->
-    Precondition.checkArgumentType(query, 'object', "invalid query object: #{query}")
-    return new ChronosCursor(this, query, opts)
-
-  fetch: (opts, callback) =>
-    Precondition.equal(typeof opts, 'object')
-    Precondition.equal(typeof callback, 'function')
-
-    req.end (err, res) =>
-      if err?
-        @emit 'error', "Error fetching #{opts.resource}. Error: #{err}"
-        return callback err, res
-      return callback err, {
-        response: res
-        data: data
-      }
+  build_url: ->
+    return @baseUrl
 
   close: () ->
+
+
+class MockChronosConnection extends ChronosConnection
+  constructor: (@data_or_files)->
+    super 'qa'
+    Precondition.checkArgumentType(@data_or_files, 'array', "invalid query object: #{@data_or_files}")
+
+  fetch: (opts, callback) ->
+    if typeof @data_or_files[0] is 'object'
+      return callback @data_or_files.shift()
+    @baseUrl = @data_or_files.shift()
+    Precondition.checkArgumentType(@baseUrl, 'string', "invalid baseUrl; are we out of data? #{@baseUrl}")
+    super opts, callback
 
 
 module.exports =
   ChronosConnection: ChronosConnection
+  MockConnection: MockChronosConnection
