@@ -1,6 +1,7 @@
 {
   "name": "timeline-service",
   "version": "0.0.0",
+  "main": "./lib/index.coffee",
   "private": true,
   "scripts": {
     "start": "node ./bin/www"
@@ -27,6 +28,13 @@
     "superagent": "^1.2.0"
   },
   "devDependencies": {
+    "browserify": "^11.0.0",
+    "coffeeify": "^1.1.0",
     "docopt": "*"
+  },
+  "browserify": {
+    "transform": [
+      "coffeeify"
+    ]
   }
 }
