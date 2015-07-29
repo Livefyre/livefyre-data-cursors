@@ -2,6 +2,7 @@ var MockChronosConnection = LivefyreTimeline.backends.chronos.connection.MockCon
 var Precondition = LivefyreTimeline.Precondition;
 var RecentQuery = LivefyreTimeline.backends.chronos.cursors.RecentQuery;
 var ReverseStream = LivefyreTimeline.models.reverse.ReverseStream;
+var ReactCSSTransitionGroup = React.addons.CSSTransitionGroup;
 
 var mockChronos = new MockChronosConnection([
     "https://rawgit.com/ninowalker/eeceb1d03fc44de918f2/raw/like.json",
@@ -35,7 +36,7 @@ var ReverseStreamComponent = React.createClass({
             cursor: cursor,
             stream: stream,
             items: [],
-            count: -1,
+            count: undefined,
             estimated: true,
             done: false,
             seen: {}
@@ -86,16 +87,15 @@ var ReverseStreamComponent = React.createClass({
 
     render: function () {
         var more = this.state.estimated ? (<button onClick={this.loadMore}>Load more</button>) : "";
-        if (this.state.count == -1) {
-            return (<div>{more}</div>);
-        }
         var plus = this.state.estimated ? '+' : '';
         return (
             <div>
                 <h2>Item Count: {this.state.count}{plus}</h2>
-                {this.state.items.map(function (item) {
-                    return this.renderItem(item);
-                }.bind(this))}
+                <ReactCSSTransitionGroup transitionName="newActivity">
+                    {this.state.items.map(function (item) {
+                        return this.renderItem(item);
+                    }.bind(this))}
+                </ReactCSSTransitionGroup>
                 {more}
             </div>
         );
