@@ -115,29 +115,34 @@ exports.ChronosCursor = ChronosCursor
 
 exports.RecentQuery = (urn, limit=10, cursorOpts={}) ->
   Precondition.checkArgumentType(urn, 'string', 'urn must be a string')
-  return resource: urn
+  return {
+    resource: urn
     lte: new Date().toISOString()
     order: 'desc'
     limit: limit
     opts: cursorOpts
+  }
 
 exports.UnreadQuery = (urn, lastRead, limit=10, cursorOpts={}) ->
   Precondition.checkArgumentType(urn, 'string', 'urn must be a string')
   Precondition.checkArgumentType(lastRead, 'string', 'lastRead must be a string')
-  return resource: urn
+  return {
+    resource: urn
     lte: new Date().toISOString()
     gt: lastRead
     order: 'desc'
     limit: limit
     opts: cursorOpts
+  }
 
 exports.ReadQuery = (urn, lastRead, limit=10, cursorOpts={}) ->
   Precondition.checkArgumentType(urn, 'string', 'urn must be a string')
   Precondition.checkArgumentType(lastRead, 'string', 'lastRead must be a string')
-  return resource: urn
+  return {
+    resource: urn
     gte: lastRead
     order: 'desc'
     limit: limit
     opts: cursorOpts
-
+  }
 

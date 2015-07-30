@@ -1,3 +1,4 @@
 node_modules
 timeline-service.iml
 /.idea
+/dist
