@@ -10,9 +10,7 @@ There are some included examples of how to build timeline visualizations with th
 
 * [public/demos/simple-pager.html](./public/demos/simple-pager.html) - Render a simple Timeline visualization using React.
 
-## Modules
-
-### 
+## Usage
 
 ```javascript
 // Create a Connection to Livefyre
