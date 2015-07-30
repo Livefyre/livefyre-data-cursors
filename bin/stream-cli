@@ -64,7 +64,7 @@ var Prog = {
                 log("data is:", data);
             }
             if (stream.count().estimated) {
-                stream.forceFault()
+                stream.loadNext()
             } else {
                 log("we're at the end of the stream")
             }

@@ -3,34 +3,43 @@
 
 
 #
-# This a model which supports
+# This is a simple interface to a cursor when paging in one direction.
+# The user subscribes to the readable event, and when readable, may read
+# data buffered itself. Explicitly calling `.loadNext` after a readable event
+# depends on the datasource backing the cursor.
 #
 class SimplePager extends EventEmitter
-  constructor: (@pastCursor, opts={}) ->
+  #
+  # @param {Cursor} cursor - an object supporting the cursor interface.
+  # @param {Object} [opts] - options
+  # @param {boolean} [opts.autoLoad] - immediately fetch the next page on init.
+  # @param {size} [opts.size] - number of items to read by default when calling `.read()`
+  #
+  constructor: (@cursor, opts={}) ->
     {autoLoad, @size} = opts
     autoLoad ?= false
     @_initialized = true
-    Precondition.checkArgument(@pastCursor?, true, "past cursor cannot be null")
-    Precondition.checkArgument(@pastCursor.on?, true, "past cursor must be an eventemitter")
-    Precondition.checkArgumentType(autoLoad, 'boolean', "autoLoad option must be boolean; default true")
+    Precondition.checkArgument(@cursor?, true, "cursor cannot be null")
+    Precondition.checkArgument(@cursor.on?, true, "cursor must be an eventemitter")
+    Precondition.checkArgumentType(autoLoad, 'boolean', "autoLoad option must be boolean; default: false")
 
-    @pastCursor.on 'error', (args...) => @emit('error', args...)
+    @cursor.on 'error', (args...) => @emit('error', args...)
 
-    @pastCursor.on 'readable', (event) =>
+    @cursor.on 'readable', (event) =>
       if not @_initialized
         @_initialized = true
         @emit 'initialized'
       @_updated(event)
 
-    @pastCursor.on 'end', (event) =>
+    @cursor.on 'end', (event) =>
       @_updated {end: event}
+      @emit 'end'
 
-    # check if the
-    if @pastCursor.count() > 0
+    if @cursor.count() > 0
       @_initialized = true
       @emit 'initialized'
     else if autoLoad
-      @pastCursor.next()
+      @cursor.next()
 
   _updated: (event) ->
     Precondition.checkArgumentType(event, 'object')
@@ -38,6 +47,9 @@ class SimplePager extends EventEmitter
     c.trigger = event
     @emit 'readable', c
 
+  #
+  # Get a count of buffered items, and metadata about the cursor.
+  #
   count: ->
     if not @_initialized?
       return {
@@ -46,8 +58,8 @@ class SimplePager extends EventEmitter
         live: false
       }
     return {
-      count: @pastCursor.count()
-      estimated: @pastCursor.hasNext()
+      count: @cursor.count()
+      estimated: @cursor.hasNext()
       live: false
     }
 
@@ -58,23 +70,23 @@ class SimplePager extends EventEmitter
     Precondition.checkArgument(typeof size, 'number', 'invalid size')
     Precondition.checkArgument(typeof loadOnFault, 'boolean', 'invalid value for loadOnFault')
 
-    return @_readPast(size, loadOnFault)
+    return @_read(size, loadOnFault)
 
-  forceFault: ->
-    @pastCursor.fault()
+  loadNext: ->
+    @cursor.fault()
 
-  flush: ->
+  readAllBuffered: ->
     return @read({size: Infinity})
 
   close: ->
-    @pastCursor.close()
+    @cursor.close()
 
   save: ->
 
   @restore: ->
 
-  _readPast: (size, fault) ->
-    b = @pastCursor.read(size: size, fault: fault)
+  _read: (size, fault) ->
+    b = @cursor.read(size: size, fault: fault)
     if not b?
       return []
     return b

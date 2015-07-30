@@ -28,7 +28,7 @@ var ReverseStreamComponent = React.createClass({
             log('error', event);
         });
 
-        cursor.on('end', function () {
+        stream.on('end', function () {
             this.setState({done: true, estimated: false})
         }.bind(this));
 
@@ -64,7 +64,7 @@ var ReverseStreamComponent = React.createClass({
             log("data is:", data);
         }
         if (stream.count().estimated) {
-            //stream.forceFault();
+            //stream.loadNext();
         } else {
             log("we're at the end of the stream")
         }
@@ -78,7 +78,7 @@ var ReverseStreamComponent = React.createClass({
     },
 
     loadMore: function () {
-        this.state.stream.forceFault();
+        this.state.stream.loadNext();
     },
 
     renderItem: function (item) {

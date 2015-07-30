@@ -13,21 +13,21 @@ class BidirectionalStream extends EventEmtter
     autoLoad ?= false
     @_initialized = true
     Precondition.checkArgument(@futureCursor?, true, "future cursor cannot be null")
-    Precondition.checkArgument(@pastCursor?, true, "past cursor cannot be null")
+    Precondition.checkArgument(@cursor?, true, "past cursor cannot be null")
     Precondition.checkArgument(@futureCursor.on?, true, "future cursor must be an eventemitter")
-    Precondition.checkArgument(@pastCursor.on?, true, "past cursor must be an eventemitter")
+    Precondition.checkArgument(@cursor.on?, true, "past cursor must be an eventemitter")
     Precondition.checkArgumentType(autoLoad, 'boolean', "autoLoad option must be boolean; default true")
 
-    @pastCursor.on 'error', (args...) =>
+    @cursor.on 'error', (args...) =>
     @futureCursor.on 'error', (args...) =>
 
-    @pastCursor.on 'readable', (event) =>
+    @cursor.on 'readable', (event) =>
       if not @_initialized
         @_initialized = true
         @emit 'initialized'
       @_updated(event.data)
 
-    @pastCursor.on 'end', (event) =>
+    @cursor.on 'end', (event) =>
       @_updated []
 
     @futureCursor.on 'readable', (event) =>
@@ -37,11 +37,11 @@ class BidirectionalStream extends EventEmtter
       @_updated(event.data)
 
     # check if the
-    if @pastCursor.count() > 0
+    if @cursor.count() > 0
       @_initialized = true
       @emit 'initialized'
     else if autoLoad
-      @pastCursor.next()
+      @cursor.next()
 
   _updated: (data) ->
     Precondition.checkArgumentType(data, 'array')
@@ -59,8 +59,8 @@ class BidirectionalStream extends EventEmtter
         live: live
       }
     return {
-      count: @pastCursor.count() + @futureCursor.count()
-      estimated: @pastCursor.hasNext()
+      count: @cursor.count() + @futureCursor.count()
+      estimated: @cursor.hasNext()
       live: live
     }
 
@@ -73,7 +73,7 @@ class BidirectionalStream extends EventEmtter
     Precondition.checkArgument(typeof size, 'number', 'invalid size')
 
     if mode is ReadMode.tail # going back in time
-      return @_readPast(size, loadOnFault)
+      return @_read(size, loadOnFault)
 
     if mode is ReadMode.head # going into the future, read from stream.
       return @futureCursor.read(size: size)
@@ -83,7 +83,7 @@ class BidirectionalStream extends EventEmtter
       b = @futureCursor.read(size: size)
       size =- b.length
       if size > 0
-        b.push(@_readPast(size, loadOnFault)...)
+        b.push(@_read(size, loadOnFault)...)
       return b
     Precondition.illegalState("how did we get here? #{mode}")
 
@@ -92,14 +92,14 @@ class BidirectionalStream extends EventEmtter
 
   close: ->
     @futureCursor.close()
-    @pastCursor.close()
+    @cursor.close()
 
   save: ->
 
   @restore: ->
 
   _readPast: (size, fault) ->
-    b = @pastCursor.read(size: size, fault: fault)
+    b = @cursor.read(size: size, fault: fault)
     if b is null
       return []
     if b is undefined
