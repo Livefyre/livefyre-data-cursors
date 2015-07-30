@@ -1,0 +1,91 @@
+#!/usr/bin/env node
+
+var doc = "\n\
+Usage:\n\
+  stream-cli [options] reverse <env> <resource>\n\
+  \n\
+Options:\n\
+  --token=<token>      lftoken\n\
+  --size=<size>        limit/size [default: 10]\n\
+";
+
+require("coffee-script/register");
+var chronosCursors = require("../lib/backends/chronos/cursors.coffee");
+var reverse = require("../lib/models/reverse.coffee");
+
+var docopt = require("docopt");
+
+var log = console.log.bind(console);
+var opts = docopt.docopt(doc, {version: 'alpha'});
+
+var ConnectionFactory = require("../lib/backends/factory.coffee")(opts['<env>'],
+    {
+        token: opts['--token'],
+        onError: function (name, backend, event) { log("#{name} - ERROR", event); }
+    });
+
+// for QA's certificates
+process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
+
+//
+var Factory = {
+    chronosClient: function () {
+        return new chronosc.ChronosConnection(opts['<env>']);
+    }
+}
+
+
+var Prog = {
+    reverse: function () {
+        var client = ConnectionFactory.chronos();
+        client.auth();
+        var query = chronosCursors.RecentQuery(opts['<resource>'], opts['--size']);
+        var cursor = ConnectionFactory.chronos().openCursor(query);
+        var stream = new reverse.ReverseStream(cursor, {autoLoad: true});
+        stream.on('error', function (event) {
+            log('error', event);
+        });
+
+        var seen = {};
+
+        stream.on('readable', function (event) {
+            console.log("readable:", event);
+            var data = stream.read();
+            if (Array.isArray(data)) {
+                log("read:", data.length);
+                data.map(function (item) {
+                    console.log("" + item.tuuid + ": " + item.verb + ", " + item.published);
+                    if (seen[item.tuuid]) {
+                        console.log("duplicate!");
+                    }
+                    seen[item.tuuid] = true;
+                });
+            } else {
+                log("data is:", data);
+            }
+            if (stream.count().estimated) {
+                stream.forceFault()
+            } else {
+                log("we're at the end of the stream")
+            }
+        });
+        cursor.on('end', function(event) {
+            log("ended", event);
+        });
+        log("starting stream...");
+    },
+
+    run: function () {
+        for (k in this) {
+            if (opts[k]) {
+                this[k](opts);
+                return;
+            }
+        }
+        process.exit(1);
+    }
+}
+log(opts);
+Prog.run()
+
+

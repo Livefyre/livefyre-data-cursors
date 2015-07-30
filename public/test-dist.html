@@ -1,0 +1,18 @@
+<!doctype html>
+
+<h1>Testing Livefyre/timeline-jslib:dist/livefyre-timeline.js</h1>
+<p id="livefyre-timeline-preview">LivefyreTimeline looks like:</p>
+
+<script src="/dist/livefyre-timeline.js"></script>
+<script>
+console.log("LivefyreTimeline is", LivefyreTimeline)
+</script>
+<script>
+(function () {
+  var previewStr = JSON.stringify(LivefyreTimeline, null, 2);
+  var previewEl = document.createElement('pre');
+  previewEl.appendChild(document.createTextNode(previewStr));
+
+  document.querySelector('#livefyre-timeline-preview').appendChild(previewEl);
+}());
+</script>
