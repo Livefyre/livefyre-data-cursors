@@ -2,7 +2,10 @@
 {Precondition, Condition} = require '../errors.coffee'
 
 
-class ReverseStream extends EventEmitter
+#
+# This a model which supports
+#
+class SimplePager extends EventEmitter
   constructor: (@pastCursor, opts={}) ->
     {autoLoad, @size} = opts
     autoLoad ?= false
@@ -78,4 +81,4 @@ class ReverseStream extends EventEmitter
 
 
 module.exports =
-  ReverseStream: ReverseStream
+  SimplePager: SimplePager

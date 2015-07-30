@@ -1,7 +1,7 @@
 var MockChronosConnection = LivefyreTimeline.backends.chronos.connection.MockConnection;
 var Precondition = LivefyreTimeline.Precondition;
 var RecentQuery = LivefyreTimeline.backends.chronos.cursors.RecentQuery;
-var ReverseStream = LivefyreTimeline.models.reverse.ReverseStream;
+var SimplePager = LivefyreTimeline.models.simple.SimplePager;
 var ReactCSSTransitionGroup = React.addons.CSSTransitionGroup;
 
 var mockChronos = new MockChronosConnection([
@@ -22,7 +22,7 @@ var realQuery = RecentQuery("urn:livefyre:studio-qa-1.fyre.co:user=TEMP-671eb614
 var ReverseStreamComponent = React.createClass({
     getInitialState: function () {
         var cursor = this.props.client.openCursor(this.props.query);
-        var stream = new ReverseStream(cursor, {autoLoad: false});
+        var stream = new SimplePager(cursor, {autoLoad: false});
         stream.on('readable', this.onReadable.bind(this));
         stream.on('error', function (event) {
             log('error', event);
