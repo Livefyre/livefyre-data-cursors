@@ -4,7 +4,12 @@ request = require 'superagent'
 {Precondition} = require '../../errors.coffee'
 {BaseConnection} = require '../base/connection.coffee'
 
+###
+  Service providing data access to Chronos. Beyond environment and auth,
+  this is a stateless object and can be reused in any context.
 
+  @event ChronosConnection#error - unhandled exceptions; e.g. connection failures, etc.
+###
 class ChronosConnection extends BaseConnection
   ENVIRONMENTS:
     'fy.re': 'https://bootstrap.fy.re'
@@ -13,6 +18,11 @@ class ChronosConnection extends BaseConnection
     'uat': 'https://bootstrap.t402.livefyre.com'
     'production': 'https://bootstrap.livefyre.com'
 
+  ###
+    New connection.
+
+    @param {string} environment - One of {qa|uat|production}
+  ###
   constructor: (@environment='production') ->
     Precondition.checkArgument(@ENVIRONMENTS[@environment]?,
       "#{@environment} is not a valid value")
@@ -21,20 +31,31 @@ class ChronosConnection extends BaseConnection
     # don't term on errors:
     @on 'error', ->
 
-
+  ###
+    Return a cursor given a query.
+    @param {object} query - the query
+    @param {object} [query.opts] - cursor options.
+    @return {ChronosCursor}
+  ###
   openCursor: (query) ->
     Precondition.checkArgumentType(query, 'object', "invalid query object: #{query}")
     opts = query.opts or {}
     delete query.opts
     return new ChronosCursor(this, query, opts)
 
+  ###
+    Returns the number of items in the result set given a query.
+  ###
   count: (query) ->
     throw new Error("not implemented")
 
+  ###
+    Directy fetch from the HTTP endpoint.
+  ###
   fetch: (opts, callback) =>
     Precondition.equal(typeof opts, 'object')
     Precondition.equal(typeof callback, 'function')
-    req = request.get(@build_url opts)
+    req = request.get(@buildUrl opts)
       .set('Accept', 'application/json')
       .query(opts)
 
@@ -51,10 +72,17 @@ class ChronosConnection extends BaseConnection
         data: res.body
       }
 
-  build_url: ->
+  ###
+    Construct a url from options.
+  ###
+  buildUrl: (opts) ->
     return @baseUrl
 
-  close: () ->
+  ###
+    Cleanup resources.
+  ###
+  close: ->
+    @removeAllListeners 'error'
 
 
 class MockChronosConnection extends ChronosConnection

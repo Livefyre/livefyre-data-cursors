@@ -3,7 +3,15 @@
 
 module.exports = exports = {}
 
+###
+  A cursor for paging through Chronos data.
 
+  @event ChronosCursor#error
+  @event ChronosCursor#readable
+  @event ChronosCursor#pagefault
+  @event ChronosCursor#end
+
+###
 class ChronosCursor extends EventEmitter
   constructor: (@client, @query, opts={}) ->
     {@cursor} = opts
