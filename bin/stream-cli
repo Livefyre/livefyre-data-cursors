@@ -11,7 +11,7 @@ Options:\n\
 
 require("coffee-script/register");
 var chronosCursors = require("../lib/backends/chronos/cursors.coffee");
-var reverse = require("../lib/models/reverse.coffee");
+var simple = require("../lib/models/simple.coffee");
 
 var docopt = require("docopt");
 
@@ -41,16 +41,16 @@ var Prog = {
         client.auth();
         var query = chronosCursors.RecentQuery(opts['<resource>'], opts['--size']);
         var cursor = ConnectionFactory.chronos().openCursor(query);
-        var stream = new reverse.ReverseStream(cursor, {autoLoad: true});
-        stream.on('error', function (event) {
+        var pager = new simple.SimplePager(cursor, {autoLoad: true});
+        pager.on('error', function (event) {
             log('error', event);
         });
 
         var seen = {};
 
-        stream.on('readable', function (event) {
+        pager.on('readable', function (event) {
             console.log("readable:", event);
-            var data = stream.read();
+            var data = pager.read();
             if (Array.isArray(data)) {
                 log("read:", data.length);
                 data.map(function (item) {
@@ -63,13 +63,13 @@ var Prog = {
             } else {
                 log("data is:", data);
             }
-            if (stream.count().estimated) {
-                stream.forceFault()
+            if (!pager.done()) {
+                pager.loadNextPage();
             } else {
-                log("we're at the end of the stream")
+                log("we're at the end of the stream");
             }
         });
-        cursor.on('end', function(event) {
+        pager.on('end', function(event) {
             log("ended", event);
         });
         log("starting stream...");

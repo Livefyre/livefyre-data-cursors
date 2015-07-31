@@ -1,7 +1,7 @@
 var MockChronosConnection = LivefyreTimeline.backends.chronos.connection.MockConnection;
 var Precondition = LivefyreTimeline.Precondition;
 var RecentQuery = LivefyreTimeline.backends.chronos.cursors.RecentQuery;
-var ReverseStream = LivefyreTimeline.models.reverse.ReverseStream;
+var SimplePager = LivefyreTimeline.models.simple.SimplePager;
 var ReactCSSTransitionGroup = React.addons.CSSTransitionGroup;
 
 var mockChronos = new MockChronosConnection([
@@ -22,19 +22,23 @@ var realQuery = RecentQuery("urn:livefyre:studio-qa-1.fyre.co:user=TEMP-671eb614
 var ReverseStreamComponent = React.createClass({
     getInitialState: function () {
         var cursor = this.props.client.openCursor(this.props.query);
-        var stream = new ReverseStream(cursor, {autoLoad: false});
-        stream.on('readable', this.onReadable.bind(this));
-        stream.on('error', function (event) {
+        var pager = new SimplePager(cursor, {autoLoad: false});
+        pager.on('readable', this.onReadable.bind(this));
+        pager.on('error', function (event) {
             log('error', event);
         });
+        pager.on('initialized', function (event) {
+            log("initialized");
+        });
 
-        cursor.on('end', function () {
+        pager.on('end', function () {
+            log("pager issued end")
             this.setState({done: true, estimated: false})
         }.bind(this));
 
         return {
             cursor: cursor,
-            stream: stream,
+            pager: pager,
             items: [],
             count: undefined,
             estimated: true,
@@ -45,8 +49,8 @@ var ReverseStreamComponent = React.createClass({
 
     onReadable: function (event) {
         console.log("readable:", event);
-        var stream = this.state.stream;
-        var data = stream.read({loadOnFault: false});
+        var pager = this.state.pager;
+        var data = pager.read({loadOnFault: false});
         var new_items = this.state.items;
         var seen = this.state.seen;
         if (Array.isArray(data)) {
@@ -61,24 +65,22 @@ var ReverseStreamComponent = React.createClass({
                 new_items.push(item);
             });
         } else {
-            log("data is:", data);
+            log("unexpected; data is:", data);
         }
-        if (stream.count().estimated) {
-            //stream.forceFault();
-        } else {
-            log("we're at the end of the stream")
+        if (pager.done()) {
+            log("we're at the end of the stream", pager.done(), pager.cursor.hasNext())
         }
 
         this.setState({
             items: new_items,
-            estimated: stream.count().estimated,
+            estimated: !pager.done(),
             count: new_items.length,
-            done: stream.count().estimated == false
+            done: pager.done()
         });
     },
 
     loadMore: function () {
-        this.state.stream.forceFault();
+        this.state.pager.loadNextPage();
     },
 
     renderItem: function (item) {

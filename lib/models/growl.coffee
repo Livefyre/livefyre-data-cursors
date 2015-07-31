@@ -13,7 +13,7 @@ class GrowlStream extends EventEmitter
 
   count: ->
     return {
-      count: @cursor.count()
+      count: @cursor.status()
       estimated: false
     }
 
