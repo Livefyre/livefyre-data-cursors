@@ -2,32 +2,6 @@
 {Precondition} = require '../../errors.coffee'
 
 
-
-#
-# This is a stream.Readable-like interface. It's not a complete
-# implementation, as it preserves the SQL cursor-like
-# semantics and expectations for use.
-#
-# c = streamConnection.open({urn: "urn:..."})
-# c.on 'readable', (event) ->
-#   console.log("New items streamed: #{event.data}; #{event.buffered} items buffered")
-#   updateView(c.read())
-#
-class StreamCursor extends EventEmitter
-
-  constructor: (@connection, @subscription, opts={}) ->
-
-  hasNext: ->
-
-  count: ->
-
-  read: (opts={}) ->
-
-  close: ->
-
-  isLive: ->
-
-
 ###*
   A cursor for paging through Perseids data.
 
@@ -106,7 +80,7 @@ class PerseidsCursor extends EventEmitter
         @_processResponse(result)
       catch err
         @_errors++
-        @backoff 4
+        @_backoff 4
         @emit 'error', err
       finally
         if @stream and not @_closed
@@ -202,8 +176,14 @@ class CollectionUpdatesQuery
     if @_seen.push(eventId) > 100
       @_seen.shift()
 
+    data = CollectionUpdatesQuery.unpack(data)
+
     @gt = eventId
     return data
+
+  @unpack: (data) ->
+    return data
+
 
   onTimeout: (data, count) ->
     if count % @bumpAfterNTimeouts == 0

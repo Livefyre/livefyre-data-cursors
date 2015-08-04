@@ -51,7 +51,6 @@ class PerseidsConnection extends BaseConnection
         .query(params)
       console.log(url)
       req.end (err, res) =>
-        #console.log err, res
         if err?
           @emit 'error', "Error fetching #{path}. Error: #{err}", err
           return callback {err: err, response: res, data: undefined}
@@ -66,12 +65,9 @@ class PerseidsConnection extends BaseConnection
     req = request.get(url)
       .set('Accept', 'application/json')
 
-    #p = new Promise (accept, reject) =>
-    #  req.end (err, res) =>
-
     p = Promise.denodeify(req.end.bind(req))()
       .then (res) =>
-        @emit 'loadServers', res
+        @emit 'loadServers', res.body
         Precondition.checkArgumentType(res.body.servers, 'array')
         @_timeOffset = new Date().getTime() - (res.body.stime * 1000)
         return res.body.servers
