@@ -1,4 +1,5 @@
 {ChronosConnection} = require './chronos/connection.coffee'
+{PerseidsConnection} = require './perseids/connection.coffee'
 # we can't import this until we fix the stream client issue.
 #{StreamConnection} = require './stream/connection.coffee'
 {Precondition} = require '../errors.coffee'
@@ -21,6 +22,11 @@ class ConnectionFactory
     return c
 
   stream: ->
+
+  perseids: ->
+    c = new PerseidsConnection(@env)
+    @_setup "Perseids", c
+    return c
 
   livecount: ->
 
