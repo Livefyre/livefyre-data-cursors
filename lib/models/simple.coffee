@@ -34,7 +34,7 @@ class SimplePager extends EventEmitter
   # @fires SimplePager#error
   ###
   constructor: (@cursor, opts={}) ->
-    {autoLoad, @size} = opts
+    {@autoLoad, @size} = opts
     @autoLoad ?= false
     @size ?= Infinity
     @_initialized = false
