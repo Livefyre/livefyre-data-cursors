@@ -40,7 +40,7 @@ class SimplePager extends EventEmitter
     @_initialized = false
     Precondition.checkArgument(@cursor?, true, "cursor cannot be null")
     Precondition.checkArgument(@cursor.on?, true, "cursor must be an eventemitter")
-    Precondition.checkArgumentType(autoLoad, 'boolean', "autoLoad option must be boolean; default: false")
+    Precondition.checkArgumentType(@autoLoad, 'boolean', "autoLoad option must be boolean; default: false")
 
     @cursor.on 'error', (args...) => @emit('error', args...)
 
