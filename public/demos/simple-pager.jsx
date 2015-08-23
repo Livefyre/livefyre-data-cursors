@@ -10,15 +10,15 @@ var ReverseStreamComponent = React.createClass({
         var pager = new SimplePager(cursor, {autoLoad: false});
         pager.on('readable', this.onReadable.bind(this));
         pager.on('error', function (event) {
-            log('error', event);
+            console.log('error', event);
         });
         pager.on('initialized', function (event) {
-            log("initialized");
+            console.log("initialized");
         });
 
         pager.on('end', function () {
-            log("pager issued end")
-            this.setState({done: true, estimated: false})
+            console.log("pager issued end");
+            this.setState({done: true, estimated: false});
         }.bind(this));
 
         return {
@@ -39,7 +39,7 @@ var ReverseStreamComponent = React.createClass({
         var new_items = this.state.items;
         var seen = this.state.seen;
         if (Array.isArray(data)) {
-            log("read:", data.length);
+            console.log("read:", data.length);
             data.map(function (item) {
                 console.log("" + item.tuuid + ": " + item.verb + ", " + item.published);
                 if (seen[item.tuuid]) {
@@ -50,10 +50,10 @@ var ReverseStreamComponent = React.createClass({
                 new_items.push(item);
             });
         } else {
-            log("unexpected; data is:", data);
+            console.log("unexpected; data is:", data);
         }
         if (pager.done()) {
-            log("we're at the end of the stream", pager.done(), pager.cursor.hasNext())
+            console.log("we're at the end of the stream", pager.done(), pager.cursor.hasNext());
         }
 
         this.setState({
@@ -108,4 +108,4 @@ var AlertActivityItem = React.createClass({
             </div>
         );
     }
-})
+});
