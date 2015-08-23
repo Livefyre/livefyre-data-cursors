@@ -1,5 +1,6 @@
 {ChronosConnection} = require './chronos/connection.coffee'
 {PerseidsConnection} = require './perseids/connection.coffee'
+{LivecountConnection} = require './livecount/connection.coffee'
 # we can't import this until we fix the stream client issue.
 #{StreamConnection} = require './stream/connection.coffee'
 {Precondition} = require '../errors.coffee'
@@ -12,30 +13,25 @@ class ConnectionFactory
     {@token, @onError, @network} = opts
 
   chronos: ->
-    c = new ChronosConnection(@env)
-    @_setup "Chronos", c
-    return c
+    return @_setup "Chronos", ChronosConnection
 
   personalStream: ->
-    c = new StreamConnection(@env)
-    @_setup "Stream", c
-    return c
-
-  stream: ->
+    return @_setup "Stream", StreamConnection
 
   perseids: ->
-    c = new PerseidsConnection(@env)
-    @_setup "Perseids", c
-    return c
+    return @_setup "Perseids", PerseidsConnection
 
   livecount: ->
+    return @_setup "Livecount", LivecountConnection
 
-  _setup: (name, c) ->
+  _setup: (name, cls) ->
+    c = new cls(@env)
     if @token? and c.auth?
       c.auth @token
     if @onError? and c.on?
       onerr = @onError.bind(name, c)
       c.on 'error', onerr
+    return c
 
 
 

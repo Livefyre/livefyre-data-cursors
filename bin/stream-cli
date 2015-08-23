@@ -4,6 +4,7 @@ var doc = "\n\
 Usage:\n\
   stream-cli [options] reverse <env> <resource>\n\
   stream-cli [options] collectionStream <env> <resource> [<event>]\n\
+  stream-cli [options] liveCount <env> <resource>\n\
   \n\
 Options:\n\
   --token=<token>      lftoken\n\
@@ -38,6 +39,11 @@ var Factory = {
 
 
 var Prog = {
+    liveCount: function () {
+        var connection = ConnectionFactory.livecount();
+        var query;
+    },
+
     collectionStream: function () {
         var client = ConnectionFactory.perseids();
         var query = new (perseidsCursors.CollectionUpdatesQuery)(opts['<resource>'], opts['<event>'] || 0, {stream: true});
@@ -52,6 +58,7 @@ var Prog = {
 
         cursor.next();
     },
+
     reverse: function () {
         var client = ConnectionFactory.chronos();
         client.auth();
