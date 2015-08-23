@@ -4,21 +4,6 @@ var RecentQuery = LivefyreTimeline.backends.chronos.cursors.RecentQuery;
 var SimplePager = LivefyreTimeline.models.simple.SimplePager;
 var ReactCSSTransitionGroup = React.addons.CSSTransitionGroup;
 
-var mockChronos = new MockChronosConnection([
-    "https://rawgit.com/ninowalker/eeceb1d03fc44de918f2/raw/like.json",
-    "https://rawgit.com/ninowalker/eeceb1d03fc44de918f2/raw/sample2.json"
-]);
-var mockQuery = RecentQuery("urn:meow", 5);
-var log = console.log.bind(console);
-
-var ConnectionFactory = LivefyreTimeline.backends.factory('qa', {
-    token: "eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJkb21haW4iOiAic3R1ZGlvLXFhLTEuZnlyZS5jbyIsICJleHBpcmVzIjogMTQ0MDcxMzczNi41NDUwMzIsICJ1c2VyX2lkIjogIlRFTVAtNjcxZWI2MTQwNDU4MWIwOCJ9.ZzRLomJSKL6OkqbxqPKdLDgpyeDH3A6HxUZS8t2bGIg"
-});
-
-var realChronos = ConnectionFactory.chronos();
-var realQuery = RecentQuery("urn:livefyre:studio-qa-1.fyre.co:user=TEMP-671eb61404581b08:alertStream", 1);
-
-
 var ReverseStreamComponent = React.createClass({
     getInitialState: function () {
         var cursor = this.props.client.openCursor(this.props.query);
@@ -124,15 +109,3 @@ var AlertActivityItem = React.createClass({
         );
     }
 })
-
-
-React.render(
-    (
-        <div>
-            <h3>Using a mocked datasource</h3>
-            <ReverseStreamComponent itemComponent={AlertActivityItem} client={mockChronos} query={mockQuery} />
-            <hr/>
-            <h3>Using a real datasource</h3>
-            <ReverseStreamComponent itemComponent={AlertActivityItem} client={realChronos} query={realQuery} />
-        </div>
-    ), document.getElementById('app'));

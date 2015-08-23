@@ -1,38 +1,42 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<title>Reverse Stream</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="">
-<meta name="author" content="">
-<!-- <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css">
-<link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap-theme.min.css"> -->
-<link rel="stylesheet" href="https://cdn.rawgit.com/Livefyre/livefyre-bootstrap/2.0.0/dist/livefyre-bootstrap.min.css">
-<!-- Fav and touch icons -->
-<link rel="apple-touch-icon-precomposed" sizes="144x144" href="/public/img/apple-touch-icon-144-precomposed.png">
-<link rel="apple-touch-icon-precomposed" sizes="114x114" href="/public/img/apple-touch-icon-114-precomposed.png">
-<link rel="apple-touch-icon-precomposed" sizes="72x72" href="/public/img/apple-touch-icon-72-precomposed.png">
-<link rel="apple-touch-icon-precomposed" href="/public/img/apple-touch-icon-57-precomposed.png">
-<link rel="shortcut icon" href="/public/img/favicon.png">
-<style>
-    body {
-        margin: 2em;
-    }
-    .newActivity {
-    }
-    .newActivity-enter {
-        opacity: 0.01;
-        background: #66CCFF;
-        margin-bottom: -2em;
-    }
-    .newActivity-enter.newActivity-enter-active {
-        opacity: 1;
-        background: transparent;
-        margin-bottom: 0em;
-        transition: opacity 1.5s ease-in, margin-bottom 0.5s ease-in, background 3.0s ease-in;
-    }
-</style>
+    <meta charset="utf-8">
+    <title>Reverse Stream</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <!-- <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap-theme.min.css"> -->
+    <link rel="stylesheet"
+          href="https://cdn.rawgit.com/Livefyre/livefyre-bootstrap/2.0.0/dist/livefyre-bootstrap.min.css">
+    <!-- Fav and touch icons -->
+    <link rel="apple-touch-icon-precomposed" sizes="144x144" href="/public/img/apple-touch-icon-144-precomposed.png">
+    <link rel="apple-touch-icon-precomposed" sizes="114x114" href="/public/img/apple-touch-icon-114-precomposed.png">
+    <link rel="apple-touch-icon-precomposed" sizes="72x72" href="/public/img/apple-touch-icon-72-precomposed.png">
+    <link rel="apple-touch-icon-precomposed" href="/public/img/apple-touch-icon-57-precomposed.png">
+    <link rel="shortcut icon" href="/public/img/favicon.png">
+    <style>
+        body {
+            margin: 2em;
+        }
+
+        .newActivity {
+        }
+
+        .newActivity-enter {
+            opacity: 0.01;
+            background: #66CCFF;
+            margin-bottom: -2em;
+        }
+
+        .newActivity-enter.newActivity-enter-active {
+            opacity: 1;
+            background: transparent;
+            margin-bottom: 0em;
+            transition: opacity 1.5s ease-in, margin-bottom 0.5s ease-in, background 3.0s ease-in;
+        }
+    </style>
 </head>
 
 <body>
@@ -45,5 +49,33 @@
 <script src="https://fb.me/JSXTransformer-0.13.1.js"></script>
 <script src="/dist/livefyre-timeline.js"></script>
 <script src="/public/demos/simple-pager.jsx" type="text/jsx"></script>
+<script type="text/jsx">
+    var mockChronos = new MockChronosConnection([
+        "https://rawgit.com/ninowalker/eeceb1d03fc44de918f2/raw/like.json",
+        "https://rawgit.com/ninowalker/eeceb1d03fc44de918f2/raw/sample2.json"
+    ]);
+    var mockQuery = RecentQuery("urn:meow", 5);
+    var log = console.log.bind(console);
+
+    var ConnectionFactory = LivefyreTimeline.backends.factory('qa', {
+        token: "eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJkb21haW4iOiAic3R1ZGlvLXFhLTEuZnlyZS5jbyIsICJleHBpcmVzIjogMTQ0MDcxMzczNi41NDUwMzIsICJ1c2VyX2lkIjogIlRFTVAtNjcxZWI2MTQwNDU4MWIwOCJ9.ZzRLomJSKL6OkqbxqPKdLDgpyeDH3A6HxUZS8t2bGIg"
+    });
+
+    var realChronos = ConnectionFactory.chronos();
+    var realQuery = RecentQuery("urn:livefyre:studio-qa-1.fyre.co:user=TEMP-671eb61404581b08:alertStream", 1);
+
+    React.render(
+            (
+                    <div>
+                        <h3>Using a mocked datasource</h3>
+                        <ReverseStreamComponent itemComponent={AlertActivityItem} client={mockChronos}
+                                                query={mockQuery}/>
+                        <hr/>
+                        <h3>Using a real datasource</h3>
+                        <ReverseStreamComponent itemComponent={AlertActivityItem} client={realChronos}
+                                                query={realQuery}/>
+                    </div>
+            ), document.getElementById('app'));
+</script>
 </body>
 </html>
