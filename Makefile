@@ -4,6 +4,7 @@ THIS_FILE := $(lastword $(MAKEFILE_LIST))
 MOCHA_OPTS = --recursive --compilers coffee:coffee-script/register --reporter spec
 SRC = $(shell find lib/ -type f)
 
+UGLIFY=./node_modules/.bin/uglifyjs
 
 node_modules: package.json
 	npm install
@@ -27,7 +28,7 @@ package: browser
 package_loop:
 	watch -n 2 $(MAKE) package
 
-dist: dist/timeline-jslib.js dist/timeline-jslib.lf.js
+dist: dist/timeline-jslib.js dist/timeline-jslib.lf.js dist/timeline-jslib.lf.min.js
 
 dist/timeline-jslib.js: $(SRC) package.json Makefile
 	mkdir -p dist
@@ -38,6 +39,10 @@ dist/timeline-jslib.lf.js: dist/timeline-jslib.js tools/*
 	cat tools/wrap-start.frag $< tools/wrap-end.frag \
 	> $@
 
-browser: dist/timeline-jslib.js
+dist/timeline-jslib.lf.min.js: dist/timeline-jslib.lf.js
+	mkdir -p dist
+	$(UGLIFY) $< --source-map $@.map -p relative -o $@
+
+browser: dist
 
 .DELETE_ON_ERROR:
