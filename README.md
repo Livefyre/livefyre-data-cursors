@@ -14,7 +14,7 @@ There are some included examples of how to build timeline visualizations with th
 
 ```javascript
 // Create a Connection to Livefyre
-var createLivefyreConnectionFactory = require('livefyre-timeline-service/backends/factory');
+var createLivefyreConnectionFactory = require('timeline-jslib/backends/factory');
 var connectionFactory = createLivefyreConnectionFactory(
   'qa|uat|production',
   {
@@ -25,7 +25,7 @@ var chronosConnection = connectionFactory.chronos();
 
 // We now have a Connection. But what do we want to get from the other side?
 // Let's create a Query to describe what we want.
-var RecentQuery = require('livefyre-timeline-service/backends/chronos/cursors').RecentQuery;
+var RecentQuery = require('timeline-jslib/backends/chronos/cursors').RecentQuery;
 var topic = "urn:livefyre:studio-qa-1.fyre.co:user=TEMP-671eb61404581b08:alertStream";
 // We want recent items related to that topci
 var recentAlertsQuery = RecentQuery(topic);
@@ -33,7 +33,7 @@ var recentAlertsQuery = RecentQuery(topic);
 // Now we can get a Cursor object that will let us retrieve the results of our
 // Query over the Connection
 // A Cursor represents your position in reading through the results of your Query.
-var SimplePager = require('livefyre-timeline-service/models/simple').SimplePager;
+var SimplePager = require('timeline-jslib/models/simple').SimplePager;
 var recentAlertsCursor = chronosConnection.openCursor(recentAlertsQuery);
 var recentAlertsPager = new SimplePager(recentAlertsCursor);
 
@@ -60,7 +60,7 @@ function render(alerts) {
 
 ## Make targets
 
-* `make browser` - Browserify the library, creating `./dist/livefyre-timeline.js`. You can verify the build works using `./public/test-dist-html`.
+* `make browser` - Browserify the library, creating `./dist/timeline-jslib.js`. You can verify the build works using `./public/test-dist-html`.
 
 ## Dependency
 https://github.com/Livefyre/stream-client

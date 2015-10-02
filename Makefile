@@ -1,5 +1,6 @@
-.PHONY: test browser package
+.PHONY: test browser package dist
 
+THIS_FILE := $(lastword $(MAKEFILE_LIST))
 MOCHA_OPTS = --recursive --compilers coffee:coffee-script/register --reporter spec
 SRC = $(shell find lib/ -type f)
 
@@ -26,12 +27,17 @@ package: browser
 package_loop:
 	watch -n 2 $(MAKE) package
 
-dist:
-	mkdir -p dist
+dist: dist/timeline-jslib.js dist/timeline-jslib.lf.js
 
-dist/livefyre-timeline.js: $(SRC) package.json Makefile | dist
+dist/timeline-jslib.js: $(SRC) package.json Makefile
+	mkdir -p dist
 	./node_modules/.bin/browserify . -s LivefyreTimeline > $@
 
-browser: dist/livefyre-timeline.js
+dist/timeline-jslib.lf.js: dist/timeline-jslib.js tools/*
+	mkdir -p dist
+	cat tools/wrap-start.frag $< tools/wrap-end.frag \
+	> $@
+
+browser: dist/timeline-jslib.js
 
 .DELETE_ON_ERROR:

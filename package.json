@@ -1,5 +1,5 @@
 {
-  "name": "livefyre-timeline-service",
+  "name": "timeline-jslib",
   "version": "0.0.0",
   "main": "./lib/index.coffee",
   "private": true,
