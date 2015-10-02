@@ -1,5 +1,5 @@
 {
-  "name": "livefyre-timeline-service",
+  "name": "timeline-jslib",
   "version": "0.0.0",
   "main": "./lib/index.coffee",
   "private": true,
@@ -31,7 +31,8 @@
   "devDependencies": {
     "browserify": "^11.0.0",
     "coffeeify": "^1.1.0",
-    "docopt": "*"
+    "docopt": "*",
+    "uglifyjs": "^2.4.10"
   },
   "browserify": {
     "transform": [
