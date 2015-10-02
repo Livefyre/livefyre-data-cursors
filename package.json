@@ -21,6 +21,7 @@
     "livefyre-stream-client": "../stream-client",
     "mocha": "^2.2.5",
     "morgan": "~1.6.1",
+    "promise": "^7.0.3",
     "serve-favicon": "~2.3.0",
     "sinon": "^1.15.4",
     "sockjs": "^0.3.15",

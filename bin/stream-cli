@@ -3,6 +3,8 @@
 var doc = "\n\
 Usage:\n\
   stream-cli [options] reverse <env> <resource>\n\
+  stream-cli [options] collectionStream <env> <resource> [<event>]\n\
+  stream-cli [options] liveCount <env> <resource>\n\
   \n\
 Options:\n\
   --token=<token>      lftoken\n\
@@ -11,6 +13,7 @@ Options:\n\
 
 require("coffee-script/register");
 var chronosCursors = require("../lib/backends/chronos/cursors.coffee");
+var perseidsCursors = require("../lib/backends/perseids/cursors.coffee");
 var simple = require("../lib/models/simple.coffee");
 
 var docopt = require("docopt");
@@ -36,11 +39,31 @@ var Factory = {
 
 
 var Prog = {
+    liveCount: function () {
+        var connection = ConnectionFactory.livecount();
+        var query;
+    },
+
+    collectionStream: function () {
+        var client = ConnectionFactory.perseids();
+        var query = new (perseidsCursors.CollectionUpdatesQuery)(opts['<resource>'], opts['<event>'] || 0, {stream: true});
+        var cursor = client.openCursor(query);
+        cursor.on('error', function (event) {
+            log('error', event);
+        });
+        cursor.on('readable', function (event) {
+            log('readable', event)
+            cursor.next();
+        });
+
+        cursor.next();
+    },
+
     reverse: function () {
         var client = ConnectionFactory.chronos();
         client.auth();
         var query = chronosCursors.RecentQuery(opts['<resource>'], opts['--size']);
-        var cursor = ConnectionFactory.chronos().openCursor(query);
+        var cursor = client.openCursor(query);
         var pager = new simple.SimplePager(cursor, {autoLoad: true});
         pager.on('error', function (event) {
             log('error', event);
