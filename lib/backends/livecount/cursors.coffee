@@ -171,4 +171,4 @@ class CollectionLivecountQuery
 
 module.exports =
   LivecountCursor: LivecountCursor
-  CollectionUpdatesQuery: CollectionUpdatesQuery
+  CollectionLivecountQuery: CollectionLivecountQuery
