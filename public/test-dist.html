@@ -1,18 +1,18 @@
 <!doctype html>
 
-<h1>Testing Livefyre/timeline-jslib:dist/timeline-jslib.js</h1>
-<p id="timeline-jslib-preview">LivefyreTimeline looks like:</p>
+<h1>Testing Livefyre/livefyre-data-cursors:dist/livefyre-data-cursors.js</h1>
+<p id="livefyre-cursors-preview">LivefyreDataCursors looks like:</p>
 
-<script src="/dist/timeline-jslib.js"></script>
+<script src="/dist/livefyre-data-cursors.js"></script>
 <script>
-console.log("LivefyreTimeline is", LivefyreTimeline)
+console.log("LivefyreDataCursors is", LivefyreDataCursors)
 </script>
 <script>
 (function () {
-  var previewStr = JSON.stringify(LivefyreTimeline, null, 2);
+  var previewStr = JSON.stringify(LivefyreDataCursors, null, 2);
   var previewEl = document.createElement('pre');
   previewEl.appendChild(document.createTextNode(previewStr));
 
-  document.querySelector('#timeline-jslib-preview').appendChild(previewEl);
+  document.querySelector('#livefyre-cursors-preview').appendChild(previewEl);
 }());
 </script>

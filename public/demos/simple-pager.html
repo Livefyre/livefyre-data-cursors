@@ -47,7 +47,7 @@
 <script src="https://fb.me/react-with-addons-0.13.1.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/superagent/0.15.7/superagent.js"></script>
 <script src="https://fb.me/JSXTransformer-0.13.1.js"></script>
-<script src="/dist/timeline-jslib.js"></script>
+<script src="/dist/livefyre-data-cursors.js"></script>
 <script src="/public/demos/simple-pager.jsx" type="text/jsx"></script>
 <script type="text/jsx">
     var mockChronos = new MockChronosConnection([
@@ -57,7 +57,7 @@
     var mockQuery = RecentQuery("urn:meow", 5);
     var log = console.log.bind(console);
 
-    var ConnectionFactory = LivefyreTimeline.backends.factory('qa', {
+    var ConnectionFactory = LivefyreDataCursors.backends.factory('qa', {
         token: "eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJkb21haW4iOiAic3R1ZGlvLXFhLTEuZnlyZS5jbyIsICJleHBpcmVzIjogMTQ0MDcxMzczNi41NDUwMzIsICJ1c2VyX2lkIjogIlRFTVAtNjcxZWI2MTQwNDU4MWIwOCJ9.ZzRLomJSKL6OkqbxqPKdLDgpyeDH3A6HxUZS8t2bGIg"
     });
 

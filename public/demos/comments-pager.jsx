@@ -3,7 +3,7 @@ var log = console.log.bind(console);
 var ReverseStreamComponent = React.createClass({
     getInitialState: function () {
         var cursor = this.props.client.openCursor(this.props.query);
-        var pager = new LivefyreTimeline.models.simple.SimplePager(cursor, {autoLoad:true, size:50});
+        var pager = new LivefyreDataCursors.models.simple.SimplePager(cursor, {autoLoad:true, size:50});
         pager.on('readable', this.onReadable.bind(this));
         pager.on('error', function (event) {
             // log('error', event);
@@ -121,9 +121,9 @@ var UserStream = React.createClass({
     
     getInitialState: function() {
         var user = this.props.user;
-        var Precondition = LivefyreTimeline.Precondition;
-        var RecentQuery = LivefyreTimeline.backends.chronos.cursors.RecentQuery;
-        var ConnectionFactory = LivefyreTimeline.backends.factory('qa', {
+        var Precondition = LivefyreDataCursors.Precondition;
+        var RecentQuery = LivefyreDataCursors.backends.chronos.cursors.RecentQuery;
+        var ConnectionFactory = LivefyreDataCursors.backends.factory('qa', {
             token: user.token
         });
         var realChronos = ConnectionFactory.chronos();
@@ -214,9 +214,9 @@ Livefyre.require(['fyre.conv#3', 'auth'], function(Conv, Auth) {
 
 //Mock data. Not as react-orientented as real stream
 function buildMockStream() {
-    var MockChronosConnection = LivefyreTimeline.backends.chronos.connection.MockConnection;
-    var Precondition = LivefyreTimeline.Precondition;
-    var RecentQuery = LivefyreTimeline.backends.chronos.cursors.RecentQuery;
+    var MockChronosConnection = LivefyreDataCursors.backends.chronos.connection.MockConnection;
+    var Precondition = LivefyreDataCursors.Precondition;
+    var RecentQuery = LivefyreDataCursors.backends.chronos.cursors.RecentQuery;
 
     var mockChronos = new MockChronosConnection([
         "https://rawgit.com/ninowalker/eeceb1d03fc44de918f2/raw/like.json",
