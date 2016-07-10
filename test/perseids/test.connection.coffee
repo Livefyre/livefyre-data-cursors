@@ -34,14 +34,14 @@ describe 'PerseidsConnection vs production', ->
     connection.on '*', log
     connection.getServers().then (list) ->
       assert.equal(list.length > 0, true, list.join(", "))
-      assert.equal(list[0].indexOf('ct') == 0, true, list[0])
+      assert.equal(list[0].indexOf('https://ct') == 0, true, list[0])
       assert.equal(Array.isArray(connection._cachedDsrServers), true)
       connection.getServers().then (list2) ->
         assert.equal(true, list2 == list)
         done()
 
   it "should handle ping", (done) ->
-    @timeout(10000)
+    @timeout(4000)
     connection = new PerseidsConnection('production')
     connection.on '*', log
     connection.fetch('/v3.1/collection/PING/0/').then (m) ->

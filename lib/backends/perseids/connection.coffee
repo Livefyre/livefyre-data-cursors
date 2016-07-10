@@ -48,16 +48,19 @@ class PerseidsConnection extends BaseConnection
   getServerAdjustedTime: ->
     return new Date(new Date().getTime() - @_timeOffset)
 
-  fetch: (path, params={}) ->
-    url = null
-    p = @_buildUrl(path).then (url_) =>
-      url = url_
-      req = request.get(url)
-        .set('Accept', 'application/json')
-        .set('Connection', 'keep-alive')
-        .query(params)
-      return req.promise()
-    .then (res) =>
+  fetch: (url, params={}) ->
+    Precondition.equal(typeof path, 'string')
+    Precondition.equal(typeof params, 'object')
+    if url.indexOf('http') == 0
+      url = url
+    else
+      url = "#{@baseUrl}#{url}"
+    console.log('fetching ' + url)
+    req = request.get(url)
+      .set('Accept', 'application/json')
+      .set('Connection', 'keep-alive')
+      .query(params)
+    p = req.promise().then (res) =>
       @emit 'fetch', url, res.body
       return {
         url: url
@@ -65,34 +68,32 @@ class PerseidsConnection extends BaseConnection
         data: res.body
       }
     .catch (err) =>
+      @emit 'error', url, err
       return {
         err: err
         url: url
       }
     return p
 
-  _buildUrl: (path) ->
-    return @getServers().then (list) =>
-      # TODO: implement
-      return "https://#{list[0]}#{path}"
-
   _dsrServers: ->
     url = "#{@baseUrl}/servers/"
     req = request.get(url)
       .set('Accept', 'application/json')
-
+      .set('Connection', 'close')
     p = req.promise()
       .then (res) =>
         @emit 'loadServers', res.body
         Precondition.checkArgumentType(res.body.servers, 'array')
         @_timeOffset = new Date().getTime() - (res.body.stime * 1000)
-        return (s.replace(/:80$/, '') for s in res.body.servers)
+        @_cachedDsrServers = ("https://#{s.replace(/:80$/, '')}" for s in res.body.servers)
+        @emit 'loadedServers', {
+          servers: @_cachedDsrServers
+          timeOffset: @_timeOffset
+        }
+        return @_cachedDsrServers
       .catch (err) =>
         @emit 'error', "Error requesting servers #{url}", err
-        return [@_ENVIRONMENTS[@environment]]
-      .then (list) =>
-        @_cachedDsrServers = list
-        return list
+        return [@baseUrl]
     return p
 
 
