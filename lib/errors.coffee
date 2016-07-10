@@ -18,7 +18,7 @@ class DataError extends Error
 Logger =
   error: (name, args...) ->
     console.error("bad things in #{name}", args)
-
+    
 
 Precondition =
   equal: (actual, expected, msg=null) ->
