@@ -32,7 +32,7 @@ Precondition =
   checkArgumentType: (value, expected, msg=null) ->
     if expected is 'array'
       return Precondition.checkArgument Array.isArray(value), true, "#{expected} is not an array"
-    Precondition.checkArgument(typeof value, expected, msg? or "#{value} is not of type #{expected}")
+    Precondition.checkArgument(typeof value == expected, expected, msg? or "#{value} is not of type #{expected}")
 
   illegalState: (msg) ->
     throw new Error(msg)

@@ -1,5 +1,4 @@
 {BaseConnection} = require '../base/connection.coffee'
-{EventEmitter} = require 'events'
 {Precondition} = require '../../errors.coffee'
 {PerseidsCursor} = require './cursors.coffee'
 {Promise} = require 'es6-promise'
@@ -32,7 +31,7 @@ class PerseidsConnection extends BaseConnection
     # if nobody is listening.
     @on 'error', ->
 
-    @_cachedDsrServers = @_dsrServers()
+    @_cachedDsrServers = null
     @_timeOffset = 0
 
   openCursor: (query) ->
@@ -42,7 +41,9 @@ class PerseidsConnection extends BaseConnection
   closeCursor: (c) ->
     c.close()
 
-  getServers: ->
+  getServers: (force=false) ->
+    if not @_cachedDsrServers or force
+      @_cachedDsrServers = @_dsrServers()
     return Promise.resolve(@_cachedDsrServers)
 
   getServerAdjustedTime: ->
@@ -51,17 +52,15 @@ class PerseidsConnection extends BaseConnection
   fetch: (url, params={}) ->
     Precondition.equal(typeof path, 'string')
     Precondition.equal(typeof params, 'object')
-    if url.indexOf('http') == 0
-      url = url
-    else
+    if url.indexOf('http') != 0
       url = "#{@baseUrl}#{url}"
-    console.log('fetching ' + url)
     req = request.get(url)
       .set('Accept', 'application/json')
       .set('Connection', 'keep-alive')
       .query(params)
+    @emit 'fetching', url, params
     p = req.promise().then (res) =>
-      @emit 'fetch', url, res.body
+      @emit 'fetched', url, res.body
       return {
         url: url
         response: res
@@ -69,10 +68,7 @@ class PerseidsConnection extends BaseConnection
       }
     .catch (err) =>
       @emit 'error', url, err
-      return {
-        err: err
-        url: url
-      }
+      throw err
     return p
 
   _dsrServers: ->

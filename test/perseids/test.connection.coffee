@@ -1,5 +1,6 @@
 ConnectionFactory = require("../../lib/backends/factory.coffee")
 {PerseidsConnection} = require("../../lib/backends/perseids/connection.coffee")
+{AwaitQuery} = require("../../lib/backends/perseids/cursors.coffee")
 assert = require('chai').assert
 
 log = (args...) ->
@@ -27,9 +28,8 @@ describe 'PerseidsConnection vs production', ->
       log(err)
     done()
 
-
-
   it "should getServers", (done) ->
+    @timeout(4000)
     connection = new PerseidsConnection('production')
     connection.on '*', log
     connection.getServers().then (list) ->
@@ -39,6 +39,13 @@ describe 'PerseidsConnection vs production', ->
       connection.getServers().then (list2) ->
         assert.equal(true, list2 == list)
         done()
+
+  it "should fallback on bad servers request", (done) ->
+    connection = new PerseidsConnection(host: 'http://example.com')
+    connection.on '*', log
+    connection.getServers().then (list) ->
+      assert.deepEqual(list, ['http://example.com'])
+      done()
 
   it "should handle ping", (done) ->
     @timeout(4000)
@@ -50,3 +57,15 @@ describe 'PerseidsConnection vs production', ->
       assert.equal(result.status, "ok")
       assert.equal(result.data.maxEventId, 1)
       done()
+
+  it 'should rethrow on a bad fetch', (done) ->
+    @timeout(4000)
+    connection = new PerseidsConnection('production')
+    connection.on '*', log
+    connection.fetch('/meow').then (m) ->
+      assert.fail("should have 404'd")
+    .catch (err) ->
+      assert.equal(err.status, 404)
+      done()
+
+

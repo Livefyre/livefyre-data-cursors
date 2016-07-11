@@ -1,195 +1,337 @@
 {EventEmitter} = require 'events'
-{Precondition} = require '../../errors.coffee'
-
+{Precondition, ValueError} = require '../../errors.coffee'
+{Promise} = require 'es6-promise'
 
 ###*
   A cursor for paging through Perseids data.
 
   @event PerseidsCursor#error
   @event PerseidsCursor#readable
-  @event PerseidsCursor#end
+  @event PerseidsCursor#timeout
+  @event PerseidsCursor#closed
+
+  Errors (cursor)
+  Backoff (cursor)
+  Load balancing strategy (query)
+  Pauses (query)
 
 ###
 class PerseidsCursor extends EventEmitter
-  constructor: (@connection, @query) ->
-    Precondition.checkArgumentType(@query.resource, 'string', "invalid query.resource value: #{@query.resource}")
-    Precondition.checkArgument(@query.resource.indexOf('urn:') == 0, true,
-      "invalid query.resource value; expected URN, got: #{@query.resource}")
-    Precondition.checkArgument(@query.resource.indexOf('collection=') > 0, true,
-      "invalid query.resource value; expected collection URN, got: #{@query.resource}")
-
-    opts = @query.opts or {}
-
-    {@backoffAfterNTimeouts, @stream, @pauseNMsBetweenRequests, @bumpAfterNTimeouts} = opts
-    @backoffAfterNTimeouts ?= 10
-    @pauseNMsBetweenRequests ?= 50
-    @bumpAfterNTimeouts = 5
-    @stream ?= true
-
-    @_running = false
-    @_timeouts = 0
-    @_errors = 0
+  constructor: (@connection, @query, @buffer=null) ->
+    @timeouts = 0
+    @errors = 0
+    # number of sequential timeouts observed.
+    @seqTimeouts = 0
+    # number of sequential errors observed.
+    @seqErrors = 0
+    # is the cursor closed
     @_closed = false
-    @_pause = @pauseNMsBetweenRequests
-    @_parked = undefined
-    @buffer = []
+    @_request = null
+    # how many we're read total
+    @_count = 0
+    @lastData = null
 
-    @on 'error', (args...) ->
+    @on 'error', (args...) =>
+      @seqErrors++
+      @seqTimeouts = 0
+      @errors++
 
+    @on 'timeout', (args...) =>
+      @seqErrors = 0
+      @seqTimeouts++
+      @timeouts++
+
+    @on 'received', (res) =>
+      @_count++
+      @lastData = new Date()
+      if @buffer?
+        @buffer.push(res.value)
+
+        @emit 'readable', {
+          buffered: @buffer.length
+          data: res.value
+          isDone: res.close
+        }
+      #if res.close
+      #  @close()
+    @seqTimeouts = 0
+    @seqErrors = 0
+
+  _emit: EventEmitter::emit
+
+  emit: (args...) ->
+    @_emit.apply(this, args)
+    args.unshift('*')
+    @_emit.apply(this, args)
+
+  ###*
+  # Can more be read from the cursor?
+  ###
   hasNext: ->
-    return true
+    return query.hasNext()
 
-  count: ->
-    return @buffer.length
+  ###*
+  # How many items we're read in total.
+  ###
+  count: (add) ->
+    if add?
+      @_count = @_count + 1
+    return @_count
 
+  ###*
+  # Read any buffered items.
+  ###
   read: (opts={}) ->
+    Precondition.equal(@buffer?, true, "buffer not initialized, cannot read.")
     {size} = opts
     size ?= Infinity
     Precondition.checkArgumentType(size, 'number')
     return @buffer.splice(0, size)
 
+
   close: ->
     @_closed = true
+    @emit 'closed'
 
   isLive: ->
-    return @stream
+    return @_closed == false and @hasNext() != false
+
+  ###*
+  # Provide a promise interface to the next batch of data in the stream
+  ###
+  next: ->
+    @_request ?= @_next()
+    return @_request
+
+  _next: ->
+    if @_closed
+      return Promise.reject(new ValueError('cursor closed'))
+
+    return @query.next(this, @connection).then (res) =>
+      try
+        if @_closed
+          throw new ValueError('cursor closed')
+        return res.value
+      finally
+        @_request = null
+        if res? and res.close
+          @close()
+
+
+class ProgressiveBackoff
+  HARD_BACKOFF: 2000
+  BASE: 2
+
+  ## TODO: cursor movement detection
+
+  constructor: (@defaultPause=50, @jitter=0.25, @maxPause=90 * 1000) ->
+    @reset()
+
+  reset: () ->
+    @_pause = @defaultPause
+    @_coeff = 1
+
+  hardBackoff: () ->
+    if @_pause < 1000
+      @_pause = @HARD_BACKOFF
+      return
+    @_coeff++
+    newmax = @HARD_BACKOFF * Math.pow(@BASE, @_coeff)
+    jitter = Math.random() * (@jitter * 2) - @jitter
+    @_pause = Math.min(newmax + jitter, @maxPause)
+
+  slowBackoff: (amount) ->
+    @_pause = Math.min(@_pause + amount, @maxPause)
+
+  pause: (args...) ->
+    p = @_pause
+    return new Promise (resolve, reject) ->
+      setTimeout () ->
+        resolve(args...)
+      , @_pause
+
+
+class BasicRoutingStrategy
+  route: (cursor, connection) ->
+    return Promise.resolve(connection.baseUrl)
+
+
+###*
+# Direct to server router. Handles failures and re-routing.
+###
+class DSRRoutingStrategy
+
+  RANDOM_SELECTOR: (list) ->
+    return Math.floor(Math.random() * list.length)
+
+  constructor: (@selector=null, @moveAfterNErrors=5) ->
+    Precondition.checkArgumentType(@selector, 'function')
+    @_servers = null
+    @_server = null
+    @move = false
+
+  route: (cursor, connection) ->
+    # move if we're havin problems
+    move = @move or (cursor.seqErrors > 0 and cursor.seqErrors % @moveAfterNErrors == 0)
+    if move
+      @_server = null
+      @move = false
+    else if @_server? # we can use the precomputed value.
+      return Promise.resolve(@_server)
+
+    # get a list of servers if we don't have any.
+    if not @_servers? or @_servers.length == 0
+      refresh = @_servers and @_servers.length == 0
+      @_servers = connection.getServers(refresh).then (list) =>
+        # copy and return a mutable value
+        val = [].concat(list)
+        @_servers = val
+        return val
+
+    @_server = Promise.resolve(@_servers).then (list) =>
+      # identify
+      idx = @selector(list)
+      @_server = list.splice(idx, 1)[0]
+      return @_server
+
+    return @_server
+
+
+###*
+# Uses the Await functionality which provides distributed change notification.
+###
+class AwaitQuery
+  PATH: "/await/"
+  
+  constructor: (@resource, opts={}) ->
+    Precondition.checkArgumentType(@resource, 'string', "invalid resource value: #{@resource}")
+    @completed = null
+    {@router, @backoff} = opts
+    @router ?= new BasicRoutingStrategy()
+    @backoff ?= new ProgressiveBackoff()
+
+  next: (cursor, connection) ->
+    if @completed
+      return Promise.resolve(@completed)
+    return @backoff.pause().then () =>
+      return @router.route(cursor, connection)
+    .then (baseUrl) =>
+      return connection.fetch("#{baseUrl}#{@PATH}", {resource: @resource} )
+    .catch (err) =>
+      cursor.emit 'error', err
+      @backoff.hardBackoff()
+      throw err
+    .then (result) =>
+      if result.data.active
+        @completed = result.data
+        val = {
+          value: result.data
+          close: true
+        }
+        cursor.emit 'received', val
+        return val
+      if result.data.timeout
+        cursor.emit 'timeout', result.data
+        @backoff.reset()
+        return next(cursor, connection)
+      cursor.emit 'unknown', result
+      throw new ValueError(result)
+
+
+###*
+# Follow a stream of collection updates.
+###
+class CollectionUpdatesQuery
+  constructor: (resource, @eventId, opts) ->
+    Precondition.checkArgumentType(resource, 'string', "invalid resource value: #{resource}")
+    Precondition.checkArgumentType(@eventId, 'number', "invalid eventId: #{eventId}")
+    if resource.indexOf("urn:") == 0
+      Precondition.checkArgument(resource.indexOf('collection=') > 0, true,
+        "invalid query.resource value; expected collection URN, got: #{resource}")
+      @collectionId = decodeURIComponent(resource.split(/collection=/)[1])
+    @collectionId ?= resource
+
+    {@version, @nudgeAfterNTimeouts, @backoffAfterNTimeouts} = opts
+    {@router, @backoff} = opts
+    @router ?= new DSRRoutingStrategy(@serverSelector)
+    @backoff ?= new ProgressiveBackoff()
+    @version ?= "3.1"
+    @backoffAfterNTimeouts ?= 10
+    @nudgeAfterNTimeouts ?= 5
+    @_seen = []
+    @_parked = undefined
+    @_timeouts = 0
+    @_duplicates = 0
+    @lastDelta = null
 
   isCatchingUp: (margin=5000) ->
     if @_timeouts > 0 then return false
     return @query.gt > ((new Date().getTime() - margin) * 1000)
 
   isParked: ->
-    return @_parked
+    return @_parked == true
 
-  fault: ->
-    @next()
+  next: (cursor, connection) ->
+    return @_fetch(cursor, connection).then (res) =>
+      Precondition.checkArgument(res.data?, true, "fetched data has no .data!")
+      if res.data.timeout
+        @_parked = res.data.parked
+        @_timeouts++
+        cursor.emit 'timeout', res.data
+        if @_timeouts % @nudgeAfterNTimeouts == 0
+          @eventId++
+          cursor.emit 'nudge', @eventId
+        if @_timeouts > @backoffAfterNTimeouts == 0
+          cursor.emit 'backoff', @_timeouts
+          @backoff.slowBackoff(1)
+        return @next(cursor, connection)
 
-  next: ->
-    # are we already fetching?
-    if @_running
-      console.log("running...")
-      return
-    console.log("fetching...")
-    @_running = true
-    @connection.fetch @query.buildPathAndQuery()..., (result) =>
-      console.log("receiving...")
-      try
-        if @_closed
-          return
-        @_running = false
-        @_processResponse(result)
-      catch err
-        @_errors++
-        @_backoff 4
-        @emit 'error', err
-      finally
-        if @stream and not @_closed
-          console.log("Streaming in #{this._pause}ms")
-          setTimeout(@next.bind(this), @_pause)
+      @_timeouts = 0
+      @_parked = false
+      @backoff.reset()
 
-  ###*
-  # Progressively backoff to a maximum delay interval.
-  ###
-  _backoff: (coeff) ->
-    @_pause = Math.min(@_pause * coeff, 90 * 1000)
-    @emit 'backoff', @_pause
+      Precondition.checkArgument(res.data.maxEventId?, true, "fetched data has no .maxEventId!")
+      if @_detectCycle(res.data)
+        @_seen.sort()
+        @eventId = @_seen[@_seen.length - 1] + 1
+        @_duplicates++
+        cursor.emit 'duplicate', res.data.maxEventId
+        return @next(cursor, connection)
+      @lastDelta = @connection.getServerAdjustedTime().getTime() - (res.data.maxEventId / 1000)
+      val = {
+        value: res.data
+        close: false
+      }
+      cursor.emit 'received', val
+      return true
+    .catch (err) =>
+      cursor.emit 'error', err
+      @backoff.hardBackoff()
+      throw err
 
-  _processResponse: (result) ->
-    # handle errors
-    if result.err?
-      throw result.err
-    payload = result.data
-    Precondition.checkArgument(payload?, true, "fetched data has no .data!")
+  serverSelector: (list) ->
+    # TODO: implement consistent hashing.
 
-    # handle timeouts
-    if payload.timeout? and payload.timeout
-      @_timeouts++
-      @query.onTimeout(payload, @_timeouts)
-      @_parked = payload.parked
-      @emit 'timeout', payload
-      if @timeouts > @backoffAfterNTimeouts
-        @backoff 2
-      return
+  _fetch: (cursor, connection) ->
+    return @backoff.pause().then () =>
+      return @router.route(cursor, connection)
+    .then (baseUrl) =>
+      return connection.fetch "#{baseUrl}/v#{@version}/collection/#{@collectionId}/#{@eventId}/", {}
 
-    # clear any backoff
-    @_pause = @pauseNMsBetweenRequests
-    @_timeouts = 0
+  _detectCycle: (id) ->
+    if @_seen.indexOf(id) != -1
+      return true
 
-    data = payload.data
-    Precondition.checkArgument(data?, true, "fetched data has no .data!")
-    # @emit 'duplicate', eventId
-    data = @query.update(data)
-
-    delta = undefined
-    if data?
-      @buffer.push(data)
-      if data.maxEventId?
-        delta = @connection.getServerAdjustedTime().getTime() - (data.maxEventId / 1000)
-
-    @emit 'readable', {
-      buffered: @buffer.length
-      data: data
-      isDone: false
-      delta: delta
-    }
-    @emit 'end' if not @hasNext()
-
-
-class AwaitQuery
-  constructor: (@resource) ->
-    Precondition.checkArgumentType(@resource, 'string', "invalid resource value: #{@resource}")
-
-  buildPathAndQuery: ->
-    return ["/await/", {resource: @resource}]
-
-
-class CollectionUpdatesQuery
-  constructor: (@resource, eventId, @opts={}) ->
-    Precondition.checkArgumentType(@resource, 'string', "invalid resource value: #{@resource}")
-    Precondition.checkArgument(@resource.indexOf('urn:') == 0, true,
-      "invalid query.resource value; expected URN, got: #{@resource}")
-    Precondition.checkArgument(@resource.indexOf('collection=') > 0, true,
-      "invalid query.resource value; expected collection URN, got: #{@resource}")
-
-    {@version, @timeout, @bumpAfterNTimeouts} = @opts
-    @opts.stream ?= true
-
-    @collectionId = decodeURIComponent(@resource.split(/collection=/)[1])
-    @_seen = []
-    @gt = eventId
-    @version ?= "3.1"
-    @bumpAfterNTimeouts ?= 5
-
-  buildPathAndQuery: ->
-    return ["/v#{@version}/collection/#{@collectionId}/#{@gt}/", {}]
-
-  update: (data) ->
-    Precondition.checkArgument(data.maxEventId?, true, "fetched data has no .maxEventId!")
-    eventId = data.maxEventId
-    if @_seen.indexOf(eventId) != -1
-      @_seen.push(eventId)
-      @_seen.sort()
-      @gt = Math.max(@_seen[@_seen.length - 1], @gt) + 1
-      #@gt = @_seen[@_seen.length - 1] + 1
-      return
-
-    if @_seen.push(eventId) > 100
+    if @_seen.push(id) > 100
       @_seen.shift()
-
-    data = CollectionUpdatesQuery.unpack(data)
-
-    @gt = eventId
-    return data
-
-  @unpack: (data) ->
-    return data
-
-
-  onTimeout: (data, count) ->
-    if count % @bumpAfterNTimeouts == 0
-      @gt++
+    return false
 
 
 module.exports =
   PerseidsCursor: PerseidsCursor
   CollectionUpdatesQuery: CollectionUpdatesQuery
+  AwaitQuery: AwaitQuery
+  ProgressiveBackoff: ProgressiveBackoff
+  BasicRoutingStrategy: BasicRoutingStrategy
+  DSRRoutingStrategy: DSRRoutingStrategy
+
