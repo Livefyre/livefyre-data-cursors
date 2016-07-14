@@ -31,7 +31,7 @@ class PerseidsConnection extends BaseConnection
     # if nobody is listening.
     @on 'error', ->
 
-    @_cachedDsrServers = null
+    @_cachedServers = null
     @_timeOffset = 0
 
   openCursor: (query) ->
@@ -41,10 +41,11 @@ class PerseidsConnection extends BaseConnection
   closeCursor: (c) ->
     c.close()
 
-  getServers: (force=false) ->
-    if not @_cachedDsrServers or force
-      @_cachedDsrServers = @_dsrServers()
-    return Promise.resolve(@_cachedDsrServers)
+  getServers: (params) ->
+    if params?
+      return @_fetchServers(params)
+    @_cachedServers ?= @_fetchServers()
+    return Promise.resolve(@_cachedServers)
 
   getServerAdjustedTime: ->
     return new Date(new Date().getTime() - @_timeOffset)
@@ -58,7 +59,13 @@ class PerseidsConnection extends BaseConnection
       .set('Accept', 'application/json')
       .set('Connection', 'keep-alive')
       .query(params)
-    @emit 'fetching', url, params
+    if @token
+      req = req.set('Authorization', "Bearer lftoken #{@token}")
+    @emit 'fetching', {
+      url: url
+      params: params
+      withAuthorization: @token?
+    }
     p = req.promise().then (res) =>
       @emit 'fetched', url, res.body
       return {
@@ -71,22 +78,27 @@ class PerseidsConnection extends BaseConnection
       throw err
     return p
 
-  _dsrServers: ->
+  _fetchServers: (params) ->
     url = "#{@baseUrl}/servers/"
     req = request.get(url)
       .set('Accept', 'application/json')
       .set('Connection', 'close')
+    if params?
+      req = req.query(params)
+    if @token
+      req = req.set('Authorization', "Bearer lftoken #{@token}")
     p = req.promise()
       .then (res) =>
         @emit 'loadServers', res.body
         Precondition.checkArgumentType(res.body.servers, 'array')
         @_timeOffset = new Date().getTime() - (res.body.stime * 1000)
-        @_cachedDsrServers = ("https://#{s.replace(/:80$/, '')}" for s in res.body.servers)
+        servers = ("https://#{s.replace(/:80$/, '')}" for s in res.body.servers)
         @emit 'loadedServers', {
-          servers: @_cachedDsrServers
+          url: url
+          servers: servers
           timeOffset: @_timeOffset
         }
-        return @_cachedDsrServers
+        return servers
       .catch (err) =>
         @emit 'error', "Error requesting servers #{url}", err
         return [@baseUrl]

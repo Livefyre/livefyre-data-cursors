@@ -9,7 +9,13 @@ log = (args...) ->
   console.log('----------------------^^^^^')
 
 
-describe 'PerseidsConnection vs production', ->
+describe 'PerseidsConnection', ->
+  it "should support server directives for throttling"
+
+  it "should be configuratable with https"
+
+  it "should be configuratable with http"
+
   it "should have the production url", (done) ->
     connection = ConnectionFactory('production', {}).perseids()
     assert.equal(connection.baseUrl, 'https://stream1.livefyre.com')
@@ -25,20 +31,41 @@ describe 'PerseidsConnection vs production', ->
       connection = new PerseidsConnection({moo: "meow"})
       assert.equal(false, 'Should have failed')
     catch err
-      log(err)
+      #log(err)
     done()
 
-  it "should getServers", (done) ->
+  it "should getServers() from production and cache them", (done) ->
     @timeout(4000)
     connection = new PerseidsConnection('production')
     connection.on '*', log
-    connection.getServers().then (list) ->
+    list = null
+    connection.getServers().then (list1) ->
+      list = list1
       assert.equal(list.length > 0, true, list.join(", "))
       assert.equal(list[0].indexOf('https://ct') == 0, true, list[0])
-      assert.equal(Array.isArray(connection._cachedDsrServers), true)
-      connection.getServers().then (list2) ->
-        assert.equal(true, list2 == list)
-        done()
+      connection.baseUrl = 'none' # ensure we can't refetch
+      return connection.getServers()
+    .then (list2) ->
+      assert.equal(list, list2)
+      done()
+    .catch done
+
+
+  it "should getServers(params) from production and not cache them", (done) ->
+    @timeout(4000)
+    connection = new PerseidsConnection('production')
+    connection.on '*', log
+    list = null
+    connection.getServers(a: true).then (list1) ->
+      list = list1
+      assert.equal(list.length > 0, true, list.join(", "))
+      assert.equal(list[0].indexOf('https://ct') == 0, true, list[0])
+      return connection.getServers(b: true)
+    .then (list2) ->
+      assert.notStrictEqual(list2, list)
+      done()
+    .catch done
+
 
   it "should fallback on bad servers request", (done) ->
     connection = new PerseidsConnection(host: 'http://example.com')
