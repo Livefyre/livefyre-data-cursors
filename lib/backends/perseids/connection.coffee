@@ -20,10 +20,11 @@ class PerseidsConnection extends BaseConnection
       Precondition.checkArgument(@ENVIRONMENTS[opts.environment]?,
         "#{@environment} is not a valid value")
       @baseUrl = @ENVIRONMENTS[opts.environment]
-    else if opts.host
-      @baseUrl = opts.host
-    else
-      Precondition.checkArgument(false, "No host/environment information provided.")
+    else if opts.baseUrl
+      @baseUrl = opts.baseUrl
+
+    Precondition.checkArgument(@baseUrl?, "No host/environment information provided.")
+    @_secure = @baseUrl.indexOf('https') is 0
     @token = null
     @serverTime = null
 
@@ -92,7 +93,7 @@ class PerseidsConnection extends BaseConnection
         @emit 'loadServers', res.body
         Precondition.checkArgumentType(res.body.servers, 'array')
         @_timeOffset = new Date().getTime() - (res.body.stime * 1000)
-        servers = ("https://#{s.replace(/:80$/, '')}" for s in res.body.servers)
+        servers = ("#{if @_secure then 'https' else 'http'}://#{s.replace(/:80$/, '')}" for s in res.body.servers)
         @emit 'loadedServers', {
           url: url
           servers: servers

@@ -36,6 +36,7 @@ describe "PerseidsCursor", ->
   it "should support .pause"
   it "should support .resume"
   it "should support .backoff"
+  it "should support server directives for throttling"
 
 
 describe "BasicRoutingStrategy", ->

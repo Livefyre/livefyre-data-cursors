@@ -10,23 +10,25 @@ log = (args...) ->
 
 
 describe 'PerseidsConnection', ->
-  it "should support server directives for throttling"
+  it "#constructor should be configurable with https", ->
+    c = new PerseidsConnection({baseUrl: "https://meow"})
+    assert.ok(c._secure == true)
 
-  it "should be configuratable with https"
+  it "#constructor should be configurable with http", ->
+    c = new PerseidsConnection({baseUrl: "http://meow"})
+    assert.ok(c._secure == false)
 
-  it "should be configuratable with http"
-
-  it "should have the production url", (done) ->
+  it "#constructor via ConnectionFactory should have the production url by name", (done) ->
     connection = ConnectionFactory('production', {}).perseids()
     assert.equal(connection.baseUrl, 'https://stream1.livefyre.com')
     done()
 
-  it "should have a custom url", (done) ->
-    connection = new PerseidsConnection({host: "meow"})
-    assert.equal(connection.baseUrl, 'meow')
+  it "#constructor should support a custom url", (done) ->
+    connection = new PerseidsConnection({baseUrl: "http://meow"})
+    assert.equal(connection.baseUrl, 'http://meow')
     done()
 
-  it "should fail without url", (done) ->
+  it "#should should fail without url", (done) ->
     try
       connection = new PerseidsConnection({moo: "meow"})
       assert.equal(false, 'Should have failed')
@@ -34,7 +36,7 @@ describe 'PerseidsConnection', ->
       #log(err)
     done()
 
-  it "should getServers() from production and cache them", (done) ->
+  it "#getServers() should get from production and cache", (done) ->
     @timeout(4000)
     connection = new PerseidsConnection('production')
     connection.on '*', log
@@ -50,8 +52,7 @@ describe 'PerseidsConnection', ->
       done()
     .catch done
 
-
-  it "should getServers(params) from production and not cache them", (done) ->
+  it "#getServers(params) should get from production and not cache them", (done) ->
     @timeout(4000)
     connection = new PerseidsConnection('production')
     connection.on '*', log
@@ -66,16 +67,26 @@ describe 'PerseidsConnection', ->
       done()
     .catch done
 
+  it "#getServers() over http should have http: list", (done) ->
+    @timeout(4000)
+    connection = new PerseidsConnection(baseUrl: "http://stream1.livefyre.com")
+    connection.on '*', log
+    connection.getServers().then (list) ->
+      assert.equal(list.length > 0, true, list.join(", "))
+      assert.equal(list[0].indexOf('http://ct') == 0, true, list[0])
+      done() 
+    .catch done
 
-  it "should fallback on bad servers request", (done) ->
-    connection = new PerseidsConnection(host: 'http://example.com')
+
+  it "#getServers should fallback to baseUrl on bad servers request", (done) ->
+    connection = new PerseidsConnection(baseUrl: 'http://example.com')
     connection.on '*', log
     connection.getServers().then (list) ->
       assert.deepEqual(list, ['http://example.com'])
       done()
     .catch done
 
-  it "should handle ping", (done) ->
+  it "#fetch should handle PING", (done) ->
     @timeout(4000)
     connection = new PerseidsConnection('production')
     connection.on '*', log
@@ -87,7 +98,7 @@ describe 'PerseidsConnection', ->
       done()
     .catch done
 
-  it 'should rethrow on a bad fetch', (done) ->
+  it '#fetch should rethrow on a bad fetch', (done) ->
     @timeout(4000)
     connection = new PerseidsConnection('production')
     connection.on '*', log
