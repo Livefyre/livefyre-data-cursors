@@ -1,4 +1,4 @@
-{EventEmitter} = require 'events'
+{EventEmitter} = require '../../events.coffee'
 {Precondition, DataError, Logger} = require '../../errors.coffee'
 
 module.exports = exports = {}
@@ -64,20 +64,21 @@ class ChronosCursor extends EventEmitter
     return false
 
   next: ->
-    console.log("fetching", @query)
+    #console.log("fetching", @query)
     @client.fetch @query, @_processResponse.bind(this)
 
   _processResponse: (result) ->
     try
+      Precondition.checkArgumentType(result, 'object', 'input is not an object')
       if result.err?
         throw result.err
+
       data = result.data
       Precondition.checkArgument(data?, true, "fetched data has no .data!")
       Precondition.checkArgument(data.meta?, true, "fetched data has no .meta!")
-      @cursor = data.meta.cursor
-      console.log(">", @cursor)
-      Precondition.checkArgumentType(@cursor, 'object')
       Precondition.checkArgumentType(data.data, 'array')
+      Precondition.checkArgumentType(data.meta.cursor, 'object', 'data.cursor is not an object')
+      @cursor = data.meta.cursor
       @buffer.push(data.data...)
       added = data.data
     catch err
