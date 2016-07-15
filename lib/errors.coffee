@@ -18,7 +18,7 @@ class DataError extends Error
 Logger =
   error: (name, args...) ->
     console.error("bad things in #{name}", args)
-
+    
 
 Precondition =
   equal: (actual, expected, msg=null) ->
@@ -32,7 +32,13 @@ Precondition =
   checkArgumentType: (value, expected, msg=null) ->
     if expected is 'array'
       return Precondition.checkArgument Array.isArray(value), true, "#{expected} is not an array"
-    Precondition.checkArgument(typeof value, expected, msg? or "#{value} is not of type #{expected}")
+    Precondition.checkArgument(typeof(value) == expected, expected, msg? or "#{value} is not of type #{expected}")
+
+  checkOptionType: (value, expected, msg=null) ->
+    if value == undefined
+      return
+    if typeof(value) != expected
+      throw new ValueError(value, "#{value} is not of type #{expected}")
 
   illegalState: (msg) ->
     throw new Error(msg)
@@ -62,9 +68,31 @@ for key of Precondition
   Precondition[key] = _decorate(key, f)
 
 
+class Meter
+  constructor: ->
+
+  inc: (keys...) ->
+    for key in keys
+      this[key] ?= 0
+      ++this[key]
+
+  val: (key, set=0) ->
+    this[key] ?= set
+
+  reset: (keys...) ->
+    for key in keys
+      @val key, 0
+
+  collect: (values) ->
+    for key, val of this
+      if val > 0
+        values[key] = val
+
+
 module.exports =
   Precondition: Precondition
   Condition: Precondition
   ValueError: ValueError
   DataError: DataError
   Logger: Logger
+  Meter: Meter
