@@ -73,6 +73,7 @@ describe 'PerseidsConnection', ->
     connection.getServers().then (list) ->
       assert.deepEqual(list, ['http://example.com'])
       done()
+    .catch done
 
   it "should handle ping", (done) ->
     @timeout(4000)
@@ -84,6 +85,7 @@ describe 'PerseidsConnection', ->
       assert.equal(result.status, "ok")
       assert.equal(result.data.maxEventId, 1)
       done()
+    .catch done
 
   it 'should rethrow on a bad fetch', (done) ->
     @timeout(4000)
@@ -94,5 +96,7 @@ describe 'PerseidsConnection', ->
     .catch (err) ->
       assert.equal(err.status, 404)
       done()
+    .catch done
+
 
 
