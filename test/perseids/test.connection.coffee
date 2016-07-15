@@ -74,7 +74,7 @@ describe 'PerseidsConnection', ->
     connection.getServers().then (list) ->
       assert.equal(list.length > 0, true, list.join(", "))
       assert.equal(list[0].indexOf('http://ct') == 0, true, list[0])
-      done() 
+      done()
     .catch done
 
 

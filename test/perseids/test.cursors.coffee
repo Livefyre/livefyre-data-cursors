@@ -31,7 +31,12 @@ describe "PerseidsCursor", ->
   it "should proxy hasNext"
   it "should read destructively"
   it "should read with a specified size"
-  it "should emit when closed"
+
+  it "#close should emit when closed", (done) ->
+    c = new PerseidsCursor
+    c.once 'closed', done
+    c.close()
+
   it "should support coming back to life from backoff without a new promise"
   it "should support .pause"
   it "should support .resume"
@@ -40,14 +45,14 @@ describe "PerseidsCursor", ->
 
 
 describe "BasicRoutingStrategy", ->
-  it 'should route to baseUrl', (done) ->
+  it '#route should route to baseUrl', (done) ->
     s = new BasicRoutingStrategy()
     s.route(null, {baseUrl: "a"}).then (url) ->
       assert.equal(url, "a")
       done()
     .catch done
 
-  it 'should fail if no baseUrl', (done) ->
+  it '#route should fail if no baseUrl', (done) ->
     s = new BasicRoutingStrategy()
     assert.throws () ->
       s.route(null, {})
@@ -57,12 +62,12 @@ describe "BasicRoutingStrategy", ->
 describe "DSRRoutingStrategy", ->
   first = (list) -> 0
 
-  it 'should fail if not provided a function', (done) ->
+  it '#constructor should fail if not provided a function', (done) ->
     assert.throws () ->
       s = new DSRRoutingStrategy()
     done()
 
-  it 'should route with one server', (done) ->
+  it '#route should route with one server', (done) ->
     s = new DSRRoutingStrategy(DSRRoutingStrategy::RANDOM_SELECTOR)
     conn = {
       getServers: () ->
@@ -73,7 +78,7 @@ describe "DSRRoutingStrategy", ->
       done()
     .catch done
 
-  it 'should provide a consistent result after picking a server', (done) ->
+  it '#route should provide a consistent result after picking a server', (done) ->
     s = new DSRRoutingStrategy(DSRRoutingStrategy::RANDOM_SELECTOR)
     conn = {
       getServers: () ->
@@ -89,7 +94,7 @@ describe "DSRRoutingStrategy", ->
     .catch done
 
 
-  it 'should route deterministically between two servers', (done) ->
+  it '#route should route deterministically between two servers', (done) ->
     s = new DSRRoutingStrategy(first)
     conn = {
       getServers: () ->
@@ -112,7 +117,7 @@ describe "DSRRoutingStrategy", ->
       done()
     .catch done
 
-  it 'should move after too many errors', (done) ->
+  it '#route should move after too many sequential errors', (done) ->
     s = new DSRRoutingStrategy(first, 2)
     conn = {
       getServers: () ->
@@ -131,7 +136,8 @@ describe "DSRRoutingStrategy", ->
       done()
     .catch done
 
-  it 'should refresh when below min threshold'
+  # to avoid the last-man-standing problem.
+  it '#route should refresh servers list when below min threshold'
 
 
 
