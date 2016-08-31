@@ -1,9 +1,8 @@
 {BaseConnection} = require '../base/connection.coffee'
-{EventEmitter} = require 'events'
 {Precondition} = require '../../errors.coffee'
 {PerseidsCursor} = require './cursors.coffee'
-Promise = require 'promise'
-request = require 'superagent'
+{Promise} = require 'es6-promise'
+request = require 'superagent-es6-promise'
 
 
 class PerseidsConnection extends BaseConnection
@@ -14,10 +13,18 @@ class PerseidsConnection extends BaseConnection
     'uat': 'https://stream1.t402.livefyre.com'
     'production': 'https://stream1.livefyre.com'
 
-  constructor: (@environment='production') ->
-    Precondition.checkArgument(@ENVIRONMENTS[@environment]?,
-      "#{@environment} is not a valid value")
-    @baseUrl = "#{@ENVIRONMENTS[@environment]}"
+  constructor: (opts={environment: 'production'}) ->
+    if typeof opts == 'string'
+      opts = environment: opts
+    if opts.environment
+      Precondition.checkArgument(@ENVIRONMENTS[opts.environment]?,
+        "#{@environment} is not a valid value")
+      @baseUrl = @ENVIRONMENTS[opts.environment]
+    else if opts.baseUrl
+      @baseUrl = opts.baseUrl
+
+    Precondition.checkArgument(@baseUrl?, "No host/environment information provided.")
+    @_secure = @baseUrl.indexOf('https') is 0
     @token = null
     @serverTime = null
 
@@ -25,7 +32,7 @@ class PerseidsConnection extends BaseConnection
     # if nobody is listening.
     @on 'error', ->
 
-    @_cachedDsrServers = @_dsrServers()
+    @_cachedServers = null
     @_timeOffset = 0
 
   openCursor: (query) ->
@@ -35,48 +42,72 @@ class PerseidsConnection extends BaseConnection
   closeCursor: (c) ->
     c.close()
 
-  getServers: ->
-    return Promise.resolve(@_cachedDsrServers)
+  getServers: (opts) ->
+    if not opts?
+      @_cachedServers ?= @_fetchServers()
+      return Promise.resolve(@_cachedServers)
+    {cursor, params} = opts
+    if cursor?
+      params = {}
+      cursor.collectRoutingParams(params)
+      cursor.meter.collect(params)
+    return @_fetchServers(params)
 
   getServerAdjustedTime: ->
     return new Date(new Date().getTime() - @_timeOffset)
 
-  fetch: (path, params, callback) ->
-    # TODO determine if we should load balance this in the client.
-    @getServers().then (list) =>
-      url = "#{@baseUrl}#{path}"
-      req = request.get(url)
-        .set('Accept', 'application/json')
-        .set('Connection', 'keep-alive')
-        .query(params)
-      console.log(url)
-      req.end (err, res) =>
-        if err?
-          @emit 'error', "Error fetching #{path}. Error: #{err}", err
-          return callback {err: err, response: res, data: undefined}
-        return callback {
-          err: err
-          response: res
-          data: res.body
-        }
+  fetch: (url, params={}) ->
+    Precondition.equal(typeof url, 'string')
+    Precondition.equal(typeof params, 'object')
+    if url.indexOf('http') != 0
+      url = "#{@baseUrl}#{url}"
+    req = request.get(url)
+      .set('Accept', 'application/json')
+      .set('Connection', 'keep-alive')
+      .query(params)
+    if @token
+      req = req.set('Authorization', "Bearer lftoken #{@token}")
+    @emit 'fetching', {
+      url: url
+      params: params
+      withAuthorization: @token?
+    }
+    p = req.promise().then (res) =>
+      @emit 'fetched', url, res.body
+      return {
+        url: url
+        response: res
+        data: res.body
+      }
+    .catch (err) =>
+      @emit 'error', url, err
+      throw err
+    return p
 
-  _dsrServers: ->
+  _fetchServers: (params) ->
     url = "#{@baseUrl}/servers/"
     req = request.get(url)
       .set('Accept', 'application/json')
-
-    p = Promise.denodeify(req.end.bind(req))()
+      .set('Connection', 'close')
+    if params?
+      req = req.query(params)
+    if @token
+      req = req.set('Authorization', "Bearer lftoken #{@token}")
+    p = req.promise()
       .then (res) =>
         @emit 'loadServers', res.body
         Precondition.checkArgumentType(res.body.servers, 'array')
         @_timeOffset = new Date().getTime() - (res.body.stime * 1000)
-        return res.body.servers
+        servers = ("#{if @_secure then 'https' else 'http'}://#{s.replace(/:80$/, '')}" for s in res.body.servers)
+        @emit 'loadedServers', {
+          url: url
+          servers: servers
+          timeOffset: @_timeOffset
+        }
+        return servers
       .catch (err) =>
-        @emit 'error', err
-        return [@_ENVIRONMENTS[@environment]]
-      .then (list) =>
-        @_cachedDsrServers = list
-        return list
+        @emit 'error', "Error requesting servers #{url}", err
+        return [@baseUrl]
     return p
 
 

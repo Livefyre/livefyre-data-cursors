@@ -1,11 +1,11 @@
-assert = require 'assert'
 fs = require 'fs'
-{ChronosCursor, UnreadCursor, RecentCursor} = require '../../lib/backends/chronos/cursors.coffee'
+{ChronosCursor, UnreadQuery, RecentQuery} = require '../../lib/backends/chronos/cursors.coffee'
 {ChronosConnection} = require '../../lib/backends/chronos/connection.coffee'
 sinon = require 'sinon'
+assert = require 'assert'
 
 
-describe.skip 'ChronosCursor init', sinon.test ->
+describe.skip 'ChronosCursor#init', sinon.test ->
   it "requires the client to have a fetch method", ->
     assert.equal(typeof (new ChronosConnection(null, {urn: 1}).fetch), "function")
 
@@ -51,17 +51,17 @@ describe.skip 'ChronosCursor init', sinon.test ->
       assert.deepEqual(c._query(), expected)
 
 
-describe "ChronosCursor response handling", ->
+describe "ChronosCursor#_processResponse", ->
   c = new ChronosCursor(null, {resource: "urn:1"})
   method = c._processResponse.bind(c)
   c.on 'error', ->
     console.log arguments
+
   it "should propagate errors", ->
     spy = sinon.spy()
     c.once 'error', spy
-    args = {err: "bad things"}
-    method args...
-    assert(spy.calledWith("bad things"))
+    method {err: "bad things"}
+    assert.equal(spy.calledWith("bad things"), true)
 
   it "should barf on bad data with good exception", ->
     spy = sinon.spy()
@@ -72,25 +72,31 @@ describe "ChronosCursor response handling", ->
 
   it "should reassign cursor, and send data including cursor", ->
     spy = sinon.spy()
-    args = {err: null, data: {data: ["data"], meta: {cursor: 1}}}
-    method args...
-    assert.equal(c.cursor, args[2].meta.cursor)
+    args = {
+      err: null
+      data: {
+        data: ["data"],
+        meta: {cursor: {}}
+      }
+    }
+    c.once '*', ->
+      console.log arguments
+    method args
+    assert.equal(c.cursor, args.data.meta.cursor)
     #assert.equal(spy.getCall(0).args[1].data, args[2].data)
     #assert.equal(spy.getCall(0).args[1].cursor, args[2].meta.cursor)
 
 
+describe "chronos.cursors.UnreadQuery", ->
+  it "#constructor(string, string)", ->
+    c = UnreadQuery("urn:...", "2016")
+    assert.ok(c?)
+    assert.equal(c.resource, "urn:...")
 
-describe "Chronos Cursor Factories", ->
-  conn = new ChronosConnection()
-  describe "UnreadCursor", ->
-    it "should create a new cursor", ->
-      c = UnreadCursor(conn, "urn:...", 1)
-      assert.ok(c?)
-      assert.equal(c.query.resource, "urn:...")
 
-  describe "RecentCursor", ->
-    it "should create a new cursor", ->
-      c = RecentCursor(conn, "urn:foo", 1)
-      assert.ok(c?)
-      assert.equal(c.query.resource, "urn:foo")
+describe "chronos.cursors.RecentQuery", ->
+  it "#constructor(string, string)", ->
+    c = RecentQuery("urn:foo", "2016")
+    assert.ok(c?)
+    assert.equal(c.resource, "urn:foo")
 

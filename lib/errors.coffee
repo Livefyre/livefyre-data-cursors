@@ -8,16 +8,59 @@ class ValueError extends Error
     @name = "ValueError"
     @message ?= "invalid"
 
+  toString: ->
+    "#{@name}: #{@message}"
 
 class DataError extends Error
   constructor: (@data, @message=null) ->
     @name = "DataError"
     @message ?= "unexpected data"
 
+  toString: ->
+    "#{@name}: #{@message}"
+
+class CancellationError extends Error
+  name = "CancellationError"
+  constructor: (@message="operation cancelled") ->
+
+  toString: ->
+    "#{@name}: #{@message}"
+
+
 
 Logger =
   error: (name, args...) ->
     console.error("bad things in #{name}", args)
+
+
+class InterfaceDescriptor
+  constructor: (@obj, @name) ->
+    Precondition.checkArgumentType(@obj, 'object')
+    Precondition.checkArgumentType(@name, 'string')
+
+  method: (method) ->
+    if not @obj?
+      throw new ValueError(@obj, "#{@name} is not an object")
+    if typeof @obj[method] != 'function'
+      throw new ValueError(@obj.method, "#{@name}##{method} is not a function")
+
+  property: (property, type, precondition) ->
+    if not @obj?
+      throw new ValueError(@obj, "#{@name} is not an object")
+    if typeof @obj[property] != type
+      throw new ValueError(@obj, "#{@name}##{property} is not #{type}, is: #{typeof(@obj[property])}")
+
+    if precondition? and not precondition(@obj[property])
+      throw new ValueError(@obj, "#{@name}##{property} failed precondition")
+
+  requirement: (property, desc, precondition) ->
+    if precondition? and not precondition(@obj[property])
+      throw new ValueError(@obj, "#{@name}##{property} failed precondition: #{desc}")
+
+
+InterfaceDescriptor::describe = (obj, name, callback) ->
+  has = new InterfaceDescriptor(obj, name)
+  callback(has)
 
 
 Precondition =
@@ -32,7 +75,13 @@ Precondition =
   checkArgumentType: (value, expected, msg=null) ->
     if expected is 'array'
       return Precondition.checkArgument Array.isArray(value), true, "#{expected} is not an array"
-    Precondition.checkArgument(typeof value, expected, msg? or "#{value} is not of type #{expected}")
+    Precondition.checkArgument(typeof(value) == expected, expected, msg? or "#{value} is not of type #{expected}")
+
+  checkOptionType: (value, expected, msg=null) ->
+    if value == undefined
+      return
+    if typeof(value) != expected
+      throw new ValueError(value, "#{value} is not of type #{expected}")
 
   illegalState: (msg) ->
     throw new Error(msg)
@@ -62,9 +111,34 @@ for key of Precondition
   Precondition[key] = _decorate(key, f)
 
 
+class Meter
+  constructor: ->
+
+  inc: (keys...) ->
+    for key in keys
+      this[key] ?= 0
+      ++this[key]
+
+  val: (key, set=0) ->
+    this[key] ?= set
+
+  reset: (keys...) ->
+    for key in keys
+      @val key, 0
+
+  collect: (values) ->
+    for key, val of this
+      if val > 0
+        values[key] = val
+    return values
+
+
 module.exports =
   Precondition: Precondition
+  InterfaceDescriptor: InterfaceDescriptor
   Condition: Precondition
   ValueError: ValueError
   DataError: DataError
+  CancellationError: CancellationError
   Logger: Logger
+  Meter: Meter
