@@ -8,17 +8,60 @@ class ValueError extends Error
     @name = "ValueError"
     @message ?= "invalid"
 
+  toString: ->
+    "#{@name}: #{@message}"
 
 class DataError extends Error
   constructor: (@data, @message=null) ->
     @name = "DataError"
     @message ?= "unexpected data"
 
+  toString: ->
+    "#{@name}: #{@message}"
+
+class CancellationError extends Error
+  name = "CancellationError"
+  constructor: (@message="operation cancelled") ->
+
+  toString: ->
+    "#{@name}: #{@message}"
+
+
 
 Logger =
   error: (name, args...) ->
     console.error("bad things in #{name}", args)
-    
+
+
+class InterfaceDescriptor
+  constructor: (@obj, @name) ->
+    Precondition.checkArgumentType(@obj, 'object')
+    Precondition.checkArgumentType(@name, 'string')
+
+  method: (method) ->
+    if not @obj?
+      throw new ValueError(@obj, "#{@name} is not an object")
+    if typeof @obj[method] != 'function'
+      throw new ValueError(@obj.method, "#{@name}##{method} is not a function")
+
+  property: (property, type, precondition) ->
+    if not @obj?
+      throw new ValueError(@obj, "#{@name} is not an object")
+    if typeof @obj[property] != type
+      throw new ValueError(@obj, "#{@name}##{property} is not #{type}, is: #{typeof(@obj[property])}")
+
+    if precondition? and not precondition(@obj[property])
+      throw new ValueError(@obj, "#{@name}##{property} failed precondition")
+
+  requirement: (property, desc, precondition) ->
+    if precondition? and not precondition(@obj[property])
+      throw new ValueError(@obj, "#{@name}##{property} failed precondition: #{desc}")
+
+
+InterfaceDescriptor::describe = (obj, name, callback) ->
+  has = new InterfaceDescriptor(obj, name)
+  callback(has)
+
 
 Precondition =
   equal: (actual, expected, msg=null) ->
@@ -87,12 +130,15 @@ class Meter
     for key, val of this
       if val > 0
         values[key] = val
+    return values
 
 
 module.exports =
   Precondition: Precondition
+  InterfaceDescriptor: InterfaceDescriptor
   Condition: Precondition
   ValueError: ValueError
   DataError: DataError
+  CancellationError: CancellationError
   Logger: Logger
   Meter: Meter

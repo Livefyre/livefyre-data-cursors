@@ -1,15 +1,16 @@
 {PerseidsConnection} = require("../../lib/backends/perseids/connection.coffee")
 _cursors = require("../../lib/backends/perseids/cursors.coffee")
-{AwaitQuery, PerseidsCursor, ProgressiveBackoff} = _cursors
-{BasicRoutingStrategy, DSRRoutingStrategy} = _cursors
-{CycleDetector, ConsistentHasher} = _cursors
-{Promise} = require 'es6-promise'
+{PressureRegulator} = require("../../lib/backends/flow.coffee")
+{AwaitQuery, PerseidsCursor} = _cursors
+{CycleDetector} = _cursors._private
 assert = require('chai').assert
+
 
 log = (args...) ->
   console.log('----------------------vvvvv')
   console.log(args)
   console.log('----------------------^^^^^')
+
 
 describe "CycleDetector", ->
   it "should not notice new items"
@@ -18,172 +19,102 @@ describe "CycleDetector", ->
   it "should forget"
   it "should provide a max"
 
-describe "ConsistentHasher", ->
-  it "should select"
-  it "should select consistently on inputs"
-  it "should consider salt"
+
+
 
 describe "PerseidsCursor", ->
-  it "should capture metrics"
-  it "should handle buffering"
-  it "should not buffer when no buffer provided"
-  it "should emit to *"
-  it "should proxy hasNext"
-  it "should read destructively"
-  it "should read with a specified size"
+  EVTS = {
+    'error': {errors: 1, seqErrors: 1}
+    'timeout': {timeouts: 1, seqTimeouts: 1}
+    'duplicate': {duplicates: 1}
+    'backoff': {backoff: 50} # special
+  }
+  for event in Object.keys(EVTS)
+    ((evt) ->
+      it "should capture metrics for #{evt}", ->
+        c = new PerseidsCursor
+        c.emit evt, 1
+        assert.deepEqual(c.meter.collect({}), EVTS[evt])
+    )(event)
+
+  it "event <received> should not buffer if buffer provided", (done) ->
+    c = new PerseidsCursor(null, null, buffer: [])
+    c.on 'readable', -> done()
+    c.emit 'received', {value: 1}
+    assert.equal(c.buffer.length, 1)
+
+  it "event <received> should not buffer when no buffer provided", ->
+    c = new PerseidsCursor
+    c.emit 'received'
+    assert.equal(c.buffer?.length, undefined)
+
+  it "#emit should emit to *", (done) ->
+    c = new PerseidsCursor
+    c.once "*", -> done()
+    c.emit('cow')
+
+  it "#hasNext should proxy the query", ->
+    c = new PerseidsCursor(null, hasNext: -> 'meow')
+    assert.equal(c.hasNext(), 'meow')
+
+  it "#read of no buffer yields empty array", ->
+    c = new PerseidsCursor
+    c.buffer = []
+    assert.deepEqual(c.read(), [])
+
+  it "#read should read destructively", ->
+    c = new PerseidsCursor
+    c.buffer = [1, 2]
+    assert.deepEqual(c.read(), [1, 2])
+    assert.deepEqual(c.read(), [])
+
+  it "#should read with a specified size", ->
+    c = new PerseidsCursor
+    c.buffer = [1, 2]
+    assert.deepEqual(c.read(size: 1), [1])
 
   it "#close should emit when closed", (done) ->
     c = new PerseidsCursor
     c.once 'closed', done
     c.close()
 
-  it "should support coming back to life from backoff without a new promise"
-  it "should support .pause"
+  it "#interrupt should interrupt the backoff process", (done) ->
+    @timeout 5
+    c = new PerseidsCursor
+    backoff = new PressureRegulator()
+    backoff.pause(cursor: c, duration: 1000).then done
+    setTimeout () ->
+      c.interrupt()
+    , 1
+
+  it "#sleep should update backoff", ->
+    c = new PerseidsCursor
+    orig = c.regulator.current()
+    c.sleep(101)
+    assert.equal(c.regulator.current(), 101 + orig)
+
+  it "#wakeUp should interrupt, and reset", (done) ->
+    @timeout 5
+    c = new PerseidsCursor
+    current = ->
+      c.regulator.current()
+
+    orig = current()
+    c.regulator.hardBackoff()
+    assert.equal(current(), PressureRegulator::HARD_BACKOFF)
+    c._pause().then () ->
+      assert.equal(current(), orig)
+      done()
+    .catch done
+
+    setTimeout () ->
+      c.wakeUp()
+    , 1
+
   it "should support .resume"
   it "should support .backoff"
   it "should support server directives for throttling"
 
-
-describe "BasicRoutingStrategy", ->
-  it '#route should route to baseUrl', (done) ->
-    s = new BasicRoutingStrategy()
-    s.route(null, {baseUrl: "a"}).then (url) ->
-      assert.equal(url, "a")
-      done()
-    .catch done
-
-  it '#route should fail if no baseUrl', (done) ->
-    s = new BasicRoutingStrategy()
-    assert.throws () ->
-      s.route(null, {})
-    done()
-
-
-describe "DSRRoutingStrategy", ->
-  first = (list) -> 0
-
-  it '#constructor should fail if not provided a function', (done) ->
-    assert.throws () ->
-      s = new DSRRoutingStrategy()
-    done()
-
-  it '#route should route with one server', (done) ->
-    s = new DSRRoutingStrategy(DSRRoutingStrategy::RANDOM_SELECTOR)
-    conn = {
-      getServers: () ->
-        return Promise.resolve(['a'])
-    }
-    s.route({meter: {}}, conn).then (server) ->
-      assert.equal(server, 'a')
-      done()
-    .catch done
-
-  it '#route should provide a consistent result after picking a server', (done) ->
-    s = new DSRRoutingStrategy(DSRRoutingStrategy::RANDOM_SELECTOR)
-    conn = {
-      getServers: () ->
-        return Promise.resolve(['a', 'b', 'c'])
-    }
-    picked = null
-    s.route({meter: {}}, conn).then (server) ->
-      picked = server
-      return s.route({meter: {}}, conn)
-    .then (server) ->
-      assert.equal(server, picked)
-      done()
-    .catch done
-
-
-  it '#route should route deterministically between two servers', (done) ->
-    s = new DSRRoutingStrategy(first)
-    conn = {
-      getServers: () ->
-        return Promise.resolve(['a', 'b'])
-    }
-    s.route({meter: {}}, conn).then (server) =>
-      assert.equal(server, 'a')
-      return s.route(meter: {}, conn)
-    .then (server) ->
-      # it should reuse
-      assert.equal(server, 'a')
-      s.move = true
-      return s.route({meter: {}}, conn)
-    .then (server) ->
-      assert.equal(server, 'b')
-      s.move = true
-      return s.route(meter: {}, conn)
-    .then (server) ->
-      assert.equal(server, 'a')
-      done()
-    .catch done
-
-  it '#route should move after too many sequential errors', (done) ->
-    s = new DSRRoutingStrategy(first, 2)
-    conn = {
-      getServers: () ->
-        return Promise.resolve(['a', 'b'])
-    }
-    s.route(meter: {seqErrors: 0}, conn).then (server) ->
-      assert.equal(server, 'a')
-      return s.route(meter: {seqErrors: 1}, conn)
-    .then (server) ->
-      # it should reuse still
-      assert.equal(server, 'a')
-      return s.route(meter: {seqErrors: 2}, conn)
-    .then (server) ->
-      # now it should have moved
-      assert.equal(server, 'b')
-      done()
-    .catch done
-
-  # to avoid the last-man-standing problem.
-  it '#route should refresh servers list when below min threshold'
-
-
-
-describe "ProgressiveBackoff", ->
-  it 'should init', (done) ->
-    b = new ProgressiveBackoff(pause: 1)
-    assert.equal(b._pause, 1)
-    done()
-
-  it 'should .current'
-  it 'should .hardBackoff'
-  it 'should .slowBackoff'
-  it 'should not exceed maxPause'
-
-  it 'should add backoff', (done) ->
-    b = new ProgressiveBackoff(pause: 1)
-    b.slowBackoff(100)
-    assert.equal(b._pause, 101)
-    done()
-
-  it 'should multiply hard', (done) ->
-    b = new ProgressiveBackoff(pause: 1, jitter: 0)
-    b.hardBackoff()
-    assert.equal(b._pause, b.HARD_BACKOFF)
-    b.hardBackoff()
-    assert.equal(b._pause, b.HARD_BACKOFF * 4)
-    done()
-
-  it 'should multiply with jitter', (done) ->
-    b = new ProgressiveBackoff(pause: 1, jitter: .1)
-    b.hardBackoff()
-    b.hardBackoff()
-    assert.notEqual(b._pause, b.HARD_BACKOFF * 4)
-    assert.isAtLeast(b._pause, b.HARD_BACKOFF * 4 * 0.9)
-    assert.isAtMost(b._pause, b.HARD_BACKOFF * 4 * 1.1)
-    done()
-
-  it 'should reset', (done) ->
-    b = new ProgressiveBackoff(pause: 1)
-    b.slowBackoff(100)
-    b.reset()
-    assert.equal(b._pause, 1)
-    done()
-
-  it 'needs a mechanism for canceling'
-  it 'needs a mechanism for coming out of sleep mode'
 
 
 

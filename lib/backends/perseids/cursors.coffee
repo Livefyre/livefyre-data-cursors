@@ -1,4 +1,6 @@
 {EventEmitter} = require '../../events.coffee'
+{PressureRegulator} = require '../flow.coffee'
+{OriginRouter} = require '../routing.coffee'
 {Precondition, ValueError, Meter} = require '../../errors.coffee'
 {Promise} = require 'es6-promise'
 
@@ -17,18 +19,26 @@
 
 ###
 class PerseidsCursor extends EventEmitter
-  constructor: (@connection, @query, @buffer=null) ->
+  constructor: (@connection, @query, opts={}) ->
     @meter = new Meter
     # is the cursor closed
     @_closed = false
     @_request = null
-    # how many we're read total
+    {@buffer, @regulator} = opts
+    @buffer ?= null
+    @regulator ?= new PressureRegulator()
 
-    @on 'error', (args...) =>
+    @on 'error', =>
       @meter.inc 'seqErrors', 'errors'
       @meter.reset 'seqTimeouts', 'timeouts'
 
-    @on 'timeout', (args...) =>
+    @on 'fetchError', (err) =>
+      @meter.inc 'fetchErrors'
+      @regulator.hardBackoff()
+      @emit 'backoff'
+      @emit 'error', err
+
+    @on 'timeout', =>
       @meter.reset 'seqErrors', 'errors'
       @meter.inc 'seqTimeouts', 'timeouts'
 
@@ -37,8 +47,12 @@ class PerseidsCursor extends EventEmitter
       @meter.reset 'seqErrors', 'errors'
       @meter.inc 'duplicates'
 
-    @on 'backoff', (value) =>
-      @meter.val 'backoff', value
+    @on 'backoff', =>
+      @meter.val 'backoff', @regulator.current()
+
+    @on 'wakeup', =>
+      @meter.inc 'wakeup'
+      @meter.val 'backoff', @regulator.current()
 
 
     @on 'received', (res) =>
@@ -59,7 +73,8 @@ class PerseidsCursor extends EventEmitter
   # Can more be read from the cursor?
   ###
   hasNext: ->
-    return query.hasNext()
+    Precondition.checkArgumentType(@query.hasNext, 'function', "query does not implement hasNext")
+    return @query.hasNext()
 
   ###*
   # Read any buffered items.
@@ -71,13 +86,41 @@ class PerseidsCursor extends EventEmitter
     Precondition.checkArgumentType(size, 'number')
     return @buffer.splice(0, size)
 
-
+  ###*
+  # Close the cursor. After, it is no longer usable.
+  ###
   close: ->
+    if @_closed is true
+      return
     @_closed = true
     @emit 'closed'
+    @cancel()
 
+  ###*
+  # Is this cursor still usable?
+  ###
   isLive: ->
-    return @_closed == false and @hasNext() != false
+    return @_closed is false and @hasNext() is true
+
+  collectRoutingParams: (obj) ->
+    @query.collectRoutingParams(obj)
+
+  ###*
+  # Mechanism to sleep.
+  ###
+  sleep: (defaultMs=30*1000) ->
+    Precondition.checkArgumentType(defaultMs, 'number')
+    @regulator.slowBackoff(defaultMs)
+    @emit 'backoff'
+    @interrupt()
+
+  ###*
+  # Provides a mechanism for waking up from sleep.
+  ###
+  wakeUp: ->
+    @regulator.reset()
+    @interrupt()
+    @emit 'wakeup'
 
   ###*
   # Provide a promise interface to the next batch of data in the stream
@@ -86,19 +129,28 @@ class PerseidsCursor extends EventEmitter
     @_request ?= @_next()
     return @_request
 
+  ###*
+  # Cancel an outstanding backend request. This will render the cursor unusable.
+  ###
   cancel: (fn) ->
     if fn?
       @_cancel = fn
+      return
     else if @_cancel?
       @_cancel()
+      @_cancel = null
+    @close()
 
-
+  ###*
+  # Interrupt any client-initiated pause. This will not cancel or invalidate
+  # the cursor or outstanding futures.
+  ###
   interrupt: (fn) ->
     if fn?
       @_interrupt = fn
     else if @_interrupt?
       @_interrupt()
-
+      @_interrupt = null
 
   _next: ->
     if @_closed
@@ -114,143 +166,28 @@ class PerseidsCursor extends EventEmitter
         if res? and res.close
           @close()
 
-###*
-#
-###
-class ProgressiveBackoff
-  HARD_BACKOFF: 2000
-  BASE: 2
-
-  constructor: (opts={}) ->
-    Precondition.checkArgumentType(opts, 'object')
-    {pause, @jitter, @maxPause} = opts
-    @defaultPause = if pause? then pause else 50
-    @jitter ?=0.25
-    @maxPause ?= 90 * 1000
-    @reset()
-
-  reset: () ->
-    @_pause = @defaultPause
-    @_coeff = 1
-
-  current: ->
-    return @_pause
-
-  hardBackoff: () ->
-    if @_pause < 1000
-      @_pause = @HARD_BACKOFF
-      return
-    @_coeff++
-    newmax = @HARD_BACKOFF * Math.pow(@BASE, @_coeff)
-    jitter = Math.random() * (@jitter * 2) - @jitter
-    @_pause = Math.min(newmax + jitter, @maxPause)
-
-  slowBackoff: (amount) ->
-    Precondition.checkArgumentType(amount, 'number')
-    @_pause = Math.min(@_pause + amount, @maxPause)
-
-  pause: (opts={}, args...) ->
-    {cursor, interrupter, canceller, duration} = opts
-    Precondition.checkOptionType(cursor?.cancel, 'function')
-    Precondition.checkOptionType(cursor?.interrupt, 'function')
-    Precondition.checkOptionType(interrupter, 'function')
-    Precondition.checkOptionType(canceller, 'function')
-    Precondition.checkOptionType(duration, 'number')
-    p = duration or @_pause
-    return new Promise (resolve, reject) ->
-      run = false
-      cancelled = false
-      fn = () ->
-        if run
-          return
-        run = true
-        try
-          if cancelled
-            throw new Error('cancelled')
-          resolve(args...)
-        catch e
-          reject e
-
-      if canceller?
-        canceller (strict=false) ->
-          if strict
-            if cancelled
-              Precondition.illegalState 'already cancelled'
-            if run
-              Precondition.illegalState 'already run'
-          cancelled = true
-      if interrupter?
-        interrupter fn
-      setTimeout fn, @_pause
+  _pause: ->
+    return @regulator.pause(cursor: this)
 
 
 ###*
-# Skips routing, uses the base URL
+# Notice cycles in visited objects.
 ###
-class BasicRoutingStrategy
-  route: (cursor, connection) ->
-    Precondition.checkArgumentType(connection.baseUrl, 'string')
-    return Promise.resolve(connection.baseUrl)
+class CycleDetector
+  constructor: (@size=100) ->
+    @_seen = []
 
+  visited: (value) ->
+    if @_seen.indexOf(value) != -1
+      return true
 
-###*
-# Direct to server router. Handles failures and re-routing.
-###
-class DSRRoutingStrategy
+    if @_seen.push(value) > @size
+      @_seen.shift()
+    return false
 
-  ###*
-  # Select a random server.
-  ###
-  RANDOM_SELECTOR: (list) ->
-    return Math.floor(Math.random() * list.length)
-
-  constructor: (@selector=null, @moveAfterNErrors=5) ->
-    Precondition.checkArgumentType(@selector, 'function')
-    Precondition.checkArgumentType(@moveAfterNErrors, 'number')
-    @_servers = null
-    @_server = null
-    @move = false
-
-  route: (cursor, connection) ->
-    # move if we're havin problems
-    Precondition.checkArgumentType(cursor.meter, 'object')
-    Precondition.checkArgumentType(connection.getServers, 'function')
-    move = @move or (cursor.meter.seqErrors > 0 and cursor.meter.seqErrors % @moveAfterNErrors == 0)
-    if move
-      @_server = null
-      @move = false
-    else if @_server? # we can use the precomputed value.
-      return Promise.resolve(@_server)
-
-    # get a list of servers if we don't have any.
-    if not @_servers? or @_servers.length == 0
-      refresh = @_servers and @_servers.length == 0
-      @_servers = connection.getServers(refresh).then (list) =>
-        # copy and return a mutable value
-        val = [].concat(list)
-        @_servers = val
-        return val
-
-    @_server = Promise.resolve(@_servers).then (list) =>
-      # TODO: solve for 'last man standing' problem
-      # identify
-      idx = @selector(list)
-      @_server = list.splice(idx, 1)[0]
-      return @_server
-
-    return @_server
-
-
-class ConsistentHasher
-  constructor: (@query) ->
-    @salt = null
-
-  select: (list) ->
-    raise new Error('not implemented')
-
-  selector: ->
-    return (list) =>
-      return @select(list)
+  max: ->
+    @_seen.sort()
+    return @_seen[@_seen.length - 1]
 
 
 ###*
@@ -262,23 +199,29 @@ class AwaitQuery
   constructor: (@resource, opts={}) ->
     Precondition.checkArgumentType(@resource, 'string', "invalid resource value: #{@resource}")
     @completed = null
-    {@router, @backoff} = opts
-    @router ?= new BasicRoutingStrategy()
-    @backoff ?= new ProgressiveBackoff()
+    {@router} = opts
+    @router ?= new OriginRouter
+
+  hasNext: ->
+    return not @completed
+
+  collectRoutingParams: (obj) ->
+    obj.resource = @resource
+    obj.method = 'await'
+    obj.salt = '' + Math.random()
 
   next: (cursor, connection) ->
     Precondition.checkArgumentType(connection?.fetch, 'function')
     Precondition.checkArgumentType(cursor?.emit, 'function')
     if @completed
       return Promise.resolve(@completed)
-    return @backoff.pause(cursor: cursor).then () =>
+    return cursor._pause().then () =>
       return @router.route(cursor, connection)
-    .then (baseUrl) =>
-      return connection.fetch("#{baseUrl}#{@PATH}", {resource: @resource} )
+    .then (server) =>
+      Precondition.checkArgumentType(server.url, 'string')
+      return connection.fetch("#{server.url}#{@PATH}", {resource: @resource} )
     .catch (err) =>
-      cursor.emit 'error', err
-      @backoff.hardBackoff()
-      cursor.emit 'backoff', @backoff.current()
+      cursor.emit 'fetchError', err
       throw err
     .then (result) =>
       if result.data.active
@@ -291,31 +234,12 @@ class AwaitQuery
         return val
       if result.data.timeout
         cursor.emit 'timeout', result.data
-        @backoff.reset()
-        cursor.emit 'backoff', @backoff.current()
+        # A timeout means we're getting data
+        # which means we're live.
+        cursor.wakeUp()
         return next(cursor, connection)
       cursor.emit 'unknown', result
       throw new ValueError(result)
-
-
-###*
-# Notice cycles in visited objects.
-###
-class CycleDetector
-  constructor: (@size=100) ->
-    @_seen = []
-
-  notice: (value) ->
-    if @_seen.indexOf(value) != -1
-      return true
-
-    if @_seen.push(value) > @size
-      @_seen.shift()
-    return false
-
-  max: ->
-    @_seen.sort()
-    return @_seen[@_seen.length - 1]
 
 
 ###*
@@ -334,8 +258,8 @@ class CollectionUpdatesQuery
 
     {@version, @nudgeAfterNTimeouts, @backoffAfterNTimeouts} = opts
     {@router, @backoff} = opts
-    @router ?= new DSRRoutingStrategy(new ConsistentHasher().selector)
-    @backoff ?= new ProgressiveBackoff()
+    @router ?= new ClientsideRouter(new ConsistentHasher().selector)
+    @backoff ?= new PressureRegulator()
     @version ?= "3.1"
     @backoffAfterNTimeouts ?= 10
     @nudgeAfterNTimeouts ?= 5
@@ -343,12 +267,19 @@ class CollectionUpdatesQuery
     @_parked = undefined
     @lastDelta = null
 
+  collectRoutingParams: (obj) ->
+    obj.collectionId = @collectionId
+    obj.method = 'await'
+    obj.salt = '' + Math.random()
+
   isCatchingUp: (margin=5000) ->
     if @lastDelta is null then return true
     return @query.gt > ((new Date().getTime() - margin) * 1000)
 
   isParked: ->
     return @_parked == true
+
+  hasNext: -> true
 
   next: (cursor, connection) ->
     Precondition.checkArgumentType(connection?.getServerAdjustedTime, 'function')
@@ -372,7 +303,7 @@ class CollectionUpdatesQuery
       cursor.emit 'backoff', @backoff.current()
 
       Precondition.checkArgument(res.data.maxEventId?, true, "fetched data has no .maxEventId!")
-      if @cycleDetector.seen(res.data.maxEventId)
+      if @cycleDetector.visited(res.data.maxEventId)
         @eventId = @cycleDetector.max() + 1
         cursor.emit 'duplicate', res.data.maxEventId
         return @next(cursor, connection)
@@ -389,19 +320,20 @@ class CollectionUpdatesQuery
       cursor.emit 'backoff', @backoff.current()
       throw err
 
+  path: ->
+    return "/v#{@version}/collection/#{@collectionId}/#{@eventId}/"
+
   _fetch: (cursor, connection) ->
     return @backoff.pause().then () =>
       return @router.route(cursor, connection)
     .then (baseUrl) =>
-      return connection.fetch "#{baseUrl}/v#{@version}/collection/#{@collectionId}/#{@eventId}/", {}
-
+      return connection.fetch "#{baseUrl}#{@path()}", {}
 
 
 module.exports =
   PerseidsCursor: PerseidsCursor
   CollectionUpdatesQuery: CollectionUpdatesQuery
   AwaitQuery: AwaitQuery
-  ProgressiveBackoff: ProgressiveBackoff
-  BasicRoutingStrategy: BasicRoutingStrategy
-  DSRRoutingStrategy: DSRRoutingStrategy
+  _private:
+    CycleDetector: CycleDetector
 

@@ -42,17 +42,22 @@ class PerseidsConnection extends BaseConnection
   closeCursor: (c) ->
     c.close()
 
-  getServers: (params) ->
-    if params?
-      return @_fetchServers(params)
-    @_cachedServers ?= @_fetchServers()
-    return Promise.resolve(@_cachedServers)
+  getServers: (opts) ->
+    if not opts?
+      @_cachedServers ?= @_fetchServers()
+      return Promise.resolve(@_cachedServers)
+    {cursor, params} = opts
+    if cursor?
+      params = {}
+      cursor.collectRoutingParams(params)
+      cursor.meter.collect(params)
+    return @_fetchServers(params)
 
   getServerAdjustedTime: ->
     return new Date(new Date().getTime() - @_timeOffset)
 
   fetch: (url, params={}) ->
-    Precondition.equal(typeof path, 'string')
+    Precondition.equal(typeof url, 'string')
     Precondition.equal(typeof params, 'object')
     if url.indexOf('http') != 0
       url = "#{@baseUrl}#{url}"
