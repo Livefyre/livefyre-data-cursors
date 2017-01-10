@@ -1,4 +1,4 @@
-# Livefyre-Timeline.js
+# livefyre-data-cursors.js
 
 A JavaScript library you can use to access Livefyre Personal Streams data and model common timeline consumption patterns.
 
@@ -14,7 +14,7 @@ There are some included examples of how to build timeline visualizations with th
 
 ```javascript
 // Create a Connection to Livefyre
-var createLivefyreConnectionFactory = require('timeline-jslib/backends/factory');
+var createLivefyreConnectionFactory = require('livefyre-data-cursors/backends/factory');
 var connectionFactory = createLivefyreConnectionFactory(
   'qa|uat|production',
   {
@@ -25,7 +25,7 @@ var chronosConnection = connectionFactory.chronos();
 
 // We now have a Connection. But what do we want to get from the other side?
 // Let's create a Query to describe what we want.
-var RecentQuery = require('timeline-jslib/backends/chronos/cursors').RecentQuery;
+var RecentQuery = require('livefyre-data-cursors/backends/chronos/cursors').RecentQuery;
 var topic = "urn:livefyre:studio-qa-1.fyre.co:user=TEMP-671eb61404581b08:alertStream";
 // We want recent items related to that topci
 var recentAlertsQuery = RecentQuery(topic);
@@ -33,7 +33,7 @@ var recentAlertsQuery = RecentQuery(topic);
 // Now we can get a Cursor object that will let us retrieve the results of our
 // Query over the Connection
 // A Cursor represents your position in reading through the results of your Query.
-var SimplePager = require('timeline-jslib/models/simple').SimplePager;
+var SimplePager = require('livefyre-data-cursors/models/simple').SimplePager;
 var recentAlertsCursor = chronosConnection.openCursor(recentAlertsQuery);
 var recentAlertsPager = new SimplePager(recentAlertsCursor);
 
@@ -60,7 +60,7 @@ function render(alerts) {
 
 ## Make targets
 
-* `make browser` - Browserify the library, creating `./dist/timeline-jslib.js`. You can verify the build works using `./public/test-dist-html`.
+* `make browser` - Browserify the library, creating `./dist/livefyre-data-cursors.js`. You can verify the build works using `./public/test-dist-html`.
 
 ## Dependency
 https://github.com/Livefyre/stream-client

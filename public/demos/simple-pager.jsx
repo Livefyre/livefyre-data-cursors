@@ -1,7 +1,7 @@
-var MockChronosConnection = LivefyreTimeline.backends.chronos.connection.MockConnection;
-var Precondition = LivefyreTimeline.Precondition;
-var RecentQuery = LivefyreTimeline.backends.chronos.cursors.RecentQuery;
-var SimplePager = LivefyreTimeline.models.simple.SimplePager;
+var MockChronosConnection = LivefyreDataCursors.backends.chronos.connection.MockConnection;
+var Precondition = LivefyreDataCursors.Precondition;
+var RecentQuery = LivefyreDataCursors.backends.chronos.cursors.RecentQuery;
+var SimplePager = LivefyreDataCursors.models.simple.SimplePager;
 var ReactCSSTransitionGroup = React.addons.CSSTransitionGroup;
 
 var ReverseStreamComponent = React.createClass({

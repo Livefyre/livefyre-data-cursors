@@ -6,6 +6,8 @@ SRC = $(shell find lib/ -type f)
 
 UGLIFY=./node_modules/.bin/uglifyjs
 
+package: browser
+
 node_modules: package.json
 	npm install
 	touch $@
@@ -23,23 +25,22 @@ server:
 debug_test:
 	./node_modules/mocha/bin/mocha debug test
 
-package: browser
 
 package_loop:
 	watch -n 2 $(MAKE) package
 
-dist: dist/timeline-jslib.js dist/timeline-jslib.lf.js dist/timeline-jslib.lf.min.js
+dist: dist/livefyre-data-cursors.js dist/livefyre-data-cursors.lf.js dist/livefyre-data-cursors.lf.min.js
 
-dist/timeline-jslib.js: $(SRC) package.json Makefile
+dist/livefyre-data-cursors.js: $(SRC) package.json Makefile
 	mkdir -p dist
-	./node_modules/.bin/browserify . -s LivefyreTimeline > $@
+	./node_modules/.bin/browserify . -s LivefyreDataCursors > $@
 
-dist/timeline-jslib.lf.js: dist/timeline-jslib.js tools/*
+dist/livefyre-data-cursors.lf.js: dist/livefyre-data-cursors.js tools/*
 	mkdir -p dist
 	cat tools/wrap-start.frag $< tools/wrap-end.frag \
 	> $@
 
-dist/timeline-jslib.lf.min.js: dist/timeline-jslib.lf.js
+dist/livefyre-data-cursors.lf.min.js: dist/livefyre-data-cursors.lf.js
 	mkdir -p dist
 	$(UGLIFY) $< --source-map $@.map -p relative -o $@
 
